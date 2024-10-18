@@ -2,16 +2,14 @@ from collections import namedtuple, deque
 from copy import deepcopy
 from random import choice
 from mcts import MCTS, Node
-from search_state import SearchState
-from search_space_einspace import EinSpace
 import torch
 
 
-class EinspaceBoard(Node):
-    def __init__(self, search_state, level_queue, state_queue):
+class Board(Node):
+    def __init__(self, search_state, level_queue, stack):
         self.search_state = search_state
         self.level_queue = level_queue
-        self.state_queue = state_queue
+        self.stack = stack
 
     def find_children(self):
         self.search_state.level = self.level_queue[-1] # we don't pop the level_queue here
@@ -33,7 +31,7 @@ class EinspaceBoard(Node):
         print("Level queue: ", self.level_queue)
         print("Level: ", self.search_state.level)
 
-        self.search_state = self.state_queue[-1] # we don't pop the state_queue here
+        self.search_state = self.state_queue.pop()
 
         operation = self.search_state.sample_operation()
         # populate the level_queue
@@ -65,6 +63,11 @@ class EinspaceBoard(Node):
         # populate the level_queue
         if operation.__name__ == "sequential_module":
             first_fn_search_state = deepcopy(search_state)
+            first_fn_search_state = SearchState(
+                search_space=self.search_state.search_space,
+                evaluation_fn=self.search_state.evaluation_fn,
+
+            )
             first_fn_search_state.level = "first_fn"
             first_fn_search_state.input_shape = search_state.output_shape
             first_fn_search_state.input_mode = search_state.output_mode
@@ -84,7 +87,7 @@ class EinspaceBoard(Node):
         elif operation.__name__ == "computation_module":
             self.level_queue.append("computation_fn")
 
-        return EinspaceBoard(search_state, self.level_queue) # return a new board with the updated architecture
+        return EinspaceBoard(search_state, self.level_queue, self.state_queue) # return a new board with the updated architecture
 
     def to_pretty_string(self):
         return self.search_state.__str__()
@@ -103,36 +106,21 @@ class EinspaceBoard(Node):
 
 
 def new_einspace_board():
-    starting_search_state = SearchState(
-            search_space=EinSpace(
-                input_shape=(1, 3, 32, 32),
-                input_mode="im",
-                num_repeated_cells=1,
-                computation_module_prob=0.32,
-                min_module_depth=0,
-                max_module_depth=100,
-                device="cpu",
-            ),
-            evaluation_fn=lambda x: torch.randn(1).item(),
-            operation=None,
-            level=None,
-            input_shape=(1, 3, 32, 32),
-            other_shape=None,
-            output_shape=None,
-            input_mode="im",
-            other_mode=None,
-            output_mode=None,
-            input_branching_factor=1,
-            output_branching_factor=None,
-            last_im_input_shape=None,
-            module_depth=0,
-            node_type="nonterminal",
-            node_id=0,
-        )
+    search_space = EinSpace(
+        input_shape=(1, 3, 32, 32),
+        input_mode="im",
+        num_repeated_cells=1,
+        computation_module_prob=0.32,
+        min_module_depth=0,
+        max_module_depth=100,
+        device="cpu",
+    )
+    evaluation_fn = lambda x: torch.randn(1).item()
+    initial_search_state = SearchState.new_search_state(search_space, evaluation_fn)
     return EinspaceBoard(
-        search_state=starting_search_state,
+        search_state=initial_search_state,
         level_queue=deque(["network"]),
-        state_queue=deque([starting_search_state]),
+        stack=deque([(initial_search_state, False)]),
     )
 
 

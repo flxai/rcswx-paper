@@ -1,98 +1,197 @@
 from copy import deepcopy
-from random import choice, choices
-from rich import print
+import sys
+import time
+import pickle
+
+import dill
+import json
+import msgpack
 
 
-class SearchState:
-    """A class to represent the state at an iteration of the search."""
+class Operation:
+    def __init__(self, name, build, infer, valid, inherit, give_back, type, child_levels=[]):
+        self.name = name
+        self.build = build
+        self.infer = infer
+        self.valid = valid
+        self.inherit = inherit
+        self.give_back = give_back
+        self.type = type
+        self.child_levels = child_levels
 
-    def __init__(
-        self,
-        search_space,
-        evaluation_fn,
-        # state variables
-        operation,
-        level,
-        input_shape,
-        other_shape,
-        output_shape,
-        input_mode,
-        other_mode,
-        output_mode,
-        input_branching_factor,
-        output_branching_factor,
-        last_im_input_shape,
-        module_depth,
-        node_type,
-        node_id,
-    ):
-        self.search_space = search_space
-        self.evaluation_fn = evaluation_fn
-        self.operation = operation
+    def is_valid(self, node):
+        return self.valid(node)
+
+    def is_terminal(self):
+        return self.type == "terminal"
+
+    def __repr__(self):
+        return f"Operation({self.name}, {self.type}, {self.child_levels})"
+
+    def __sizeof__(self):
+        # computes the total size of this object
+        return sum(map(sys.getsizeof, self.__dict__.values()))
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return self.name == other.name
+
+
+class DerivationTreeNode:
+    def __init__(self, id, level="network", parent=None, input_params={}, operation=None):
+        self.id = id
         self.level = level
-        self.input_shape = input_shape
-        self.other_shape = other_shape
-        self.output_shape = output_shape
-        self.input_mode = input_mode
-        self.other_mode = other_mode
-        self.output_mode = output_mode
-        self.input_branching_factor = input_branching_factor
-        self.output_branching_factor = output_branching_factor
-        self.last_im_input_shape = last_im_input_shape
-        self.module_depth = module_depth
-        self.node_type = node_type
-        self.node_id = node_id
-
-    def available_operations(self):
-        return self.search_space.get_available_options(self)
-
-    def sample_operation(self):
-        options = self.available_operations()
-        print(options)
-        # if the computation module is an available choice,
-        # we give it a higher probability of being chosen
-        # to balance the depth of sampled architectures
-        # a computation_module_prob of over 50%
-        # will lead to potentially infinite recursion
-        if "computation_module" in [fn.__name__ for fn in options]:
-            probs = [
-                (
-                    self.search_space.computation_module_prob
-                    if fn.__name__ == "computation_module"
-                    else (1 - self.search_space.computation_module_prob)
-                    / (len(options) - 1)
-                )
-                for fn in options
-            ]
-            chosen = choices(options, weights=probs, k=1)[0]
-        # otherwise we sample uniformly
+        self.parent = parent
+        self.children = []
+        self.input_params = input_params
+        self.output_params = {}
+        if operation:
+            self.initialise(operation, id)
         else:
-            chosen = choice(options)
-        return chosen
+            self.operation = None
+        self.available_rules = None
 
-    def grow(self, operation):
-        # update the state with the chosen operation
-        new_search_state = self.search_space.grow(deepcopy(self), operation) # returns the new states of the children
-        # print("New search state: ", new_search_state)
-        return new_search_state
+    def initialise(self, operation, stack, max_id):
+        self.memory = (deepcopy(stack), max_id)
+        # self.memory = (pickle.loads(pickle.dumps(stack)), max_id)
+        # self.memory = (dill.loads(dill.dumps(stack)), max_id) # dill is slower than deepcopy
+        # self.memory = (json.loads(json.dumps(stack)), max_id)
+        # self.memory = (msgpack.loads(msgpack.dumps(stack)), max_id)
 
-    def score(self):
-        return self.evaluation_fn(self)
+        self.operation = operation
+        # print(f"Initializing node {self.id} with operation {self.operation}")
+
+        # Compute the output params for the current node
+        if self.operation.is_terminal():
+            self.output_params = self.operation.infer(self)
+        else:
+            for i, child_level in enumerate(operation.child_levels):
+                child = DerivationTreeNode(
+                    id=max_id + i + 1,
+                    level=child_level,
+                    parent=self,
+                )
+                self.add_child(child)
+        # print(f"initialised node {self.id} with operation {self.operation}")
+        for child in reversed(self.children):
+            # print(f"Adding child {child.id} to stack")
+            stack.append((child, False))
+            max_id = max(child.id, max_id)
+        return stack, max_id
+
+    def add_child(self, child):
+        self.children.append(child)
+        child.set_parent(self)
+
+    def set_parent(self, parent):
+        self.parent = parent
+
+    def get_precursor(self):
+        if self.is_root():
+            self.precursor = None
+        self_idx = self.parent.children.index(self)
+        if self_idx == 0: # first child
+            precursor = self.parent
+        else: # not first child
+            precursor = self.parent.children[self_idx - 1]
+            while precursor.children: # find most recent 'cousin'
+                precursor = precursor.children[-1]
+        return precursor
+
+    def inherit_input_params(self):
+        child_idx = self.parent.children.index(self)
+        self.parent.operation.inherit[child_idx](self)
+
+    def give_back_output_params(self):
+        if not self.is_root():
+            child_idx = self.parent.children.index(self)
+            self.parent.operation.give_back[child_idx](self)
+
+    def is_root(self):
+        return self.parent is None
+
+    def is_leaf(self):
+        return self.children == []
+
+    def is_first_child(self):
+        return self.parent.children[0] == self
+
+    def get_root(self):
+        if self.is_root():
+            return self
+        return self.parent.get_root()
+
+    def limit_options(self, operation):
+        # self.parent.children.remove(self)
+        # get index of the operation in the available rules
+        op_names = [op.name for op in self.available_rules["options"]]
+        idx = op_names.index(operation.name)
+        self.available_rules["options"].pop(idx)
+        self.available_rules["probs"].pop(idx)
+
+    def __sizeof__(self):
+        # computes the total size of this object
+        return sum(map(sys.getsizeof, self.__dict__.values()))
+
+    def __repr__(self):
+        return (
+            f"DerivationTreeNode(" \
+            f"id={self.id}, level={self.level}, operation={self.operation}, input_params={self.input_params}, " \
+            f"output_params={self.output_params}, address={hex(id(self))}, " \
+            # f"memory={self.memory if hasattr(self, 'memory') else None}, " \
+            f"size={round(self.__sizeof__() / 1e6, 2)} MB" \
+            f")"
+        )
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __eq__(self, other):
+        return self.id == other.id
+
+
+class Stack:
+    def __init__(self, stack=[]):
+        self.stack = stack
+
+    def append(self, node):
+        self.stack.append(node)
+        # avoid saving too many memory states
+        # for node, _ in self.stack[:-1]:
+        #     node.memory = None
+
+    def pop(self):
+        return self.stack.pop()
+
+    def restore(self, stack, node):
+        self.stack = stack.stack
+        self.stack[-1] = (self.stack[-1][0], False)
+        new_node = self.stack[-1][0]
+        new_node.limit_options(node.operation)
+
+    def is_empty(self):
+        return self.stack == []
+
+    def __sizeof__(self):
+        # computes the total size of this object
+        return sum(map(sys.getsizeof, self.__dict__.values()))
+
+    def __repr__(self):
+        repr = "Stack(\n"
+        if self.stack:
+            for node in self.stack[:-1]:
+                repr += f"\t{node},\n"
+            repr += f"\t{self.stack[-1]}\n"
+        repr += ")"
+        return repr
 
     def __str__(self):
-        return f"SearchState(" \
-        f"operation={self.operation}, " \
-        f"level={self.level}, " \
-        f"input_shape={self.input_shape}, " \
-        f"other_shape={self.other_shape}, " \
-        f"output_shape={self.output_shape}, " \
-        f"input_mode={self.input_mode}, " \
-        f"other_mode={self.other_mode}, " \
-        f"output_mode={self.output_mode}, " \
-        f"input_branching_factor={self.input_branching_factor}, " \
-        f"output_branching_factor={self.output_branching_factor}, " \
-        f"last_im_input_shape={self.last_im_input_shape}, " \
-        f"module_depth={self.module_depth}, " \
-        f"node_type={self.node_type}, " \
-        f"node_id={self.node_id}, " \
-        f")"
+        repr = "Stack(\n"
+        if self.stack:
+            for node in self.stack[:-1]:
+                repr += f"\t{node},\n"
+            repr += f"\t{self.stack[-1]}\n"
+        repr += ")"
+        return repr
