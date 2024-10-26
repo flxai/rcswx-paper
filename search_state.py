@@ -3,6 +3,8 @@ import sys
 import time
 import pickle
 
+from rich import print
+
 import dill
 import json
 import msgpack
@@ -124,12 +126,15 @@ class DerivationTreeNode:
         return self.parent.get_root()
 
     def limit_options(self, operation):
-        # self.parent.children.remove(self)
         # get index of the operation in the available rules
+        # print(f"Node {self.id}: {self}")
+        # print(f"Options {[op.name for op in self.available_rules['options']]}")
+        # print(f"Removed {operation.name}")
         op_names = [op.name for op in self.available_rules["options"]]
         idx = op_names.index(operation.name)
         self.available_rules["options"].pop(idx)
         self.available_rules["probs"].pop(idx)
+        # print(f"Options left {[op.name for op in self.available_rules['options']]}")
 
     def __sizeof__(self):
         # computes the total size of this object
@@ -138,10 +143,11 @@ class DerivationTreeNode:
     def __repr__(self):
         return (
             f"DerivationTreeNode(" \
-            f"id={self.id}, level={self.level}, operation={self.operation}, input_params={self.input_params}, " \
-            f"output_params={self.output_params}, address={hex(id(self))}, " \
+            f"id={self.id}, level={self.level}, operation={self.operation}, " \
+            f"input_params={self.input_params}, output_params={self.output_params}, " \
+            f"address={hex(id(self))}" \
             # f"memory={self.memory if hasattr(self, 'memory') else None}, " \
-            f"size={round(self.__sizeof__() / 1e6, 2)} MB" \
+            # f"size={round(self.__sizeof__() / 1e6, 2)} MB" \
             f")"
         )
 
@@ -166,10 +172,14 @@ class Stack:
         return self.stack.pop()
 
     def restore(self, stack, node):
+        # print(f"Restoring stack")
+        # print(f"Previous stack: {self}")
+        # print(f"Precursor node to restore to: {node}")
         self.stack = stack.stack
         self.stack[-1] = (self.stack[-1][0], False)
-        new_node = self.stack[-1][0]
-        new_node.limit_options(node.operation)
+        self.stack.append((node, False))
+        # print(f"New stack: {stack}")
+        node.limit_options(node.operation)
 
     def is_empty(self):
         return self.stack == []

@@ -1,5 +1,6 @@
 from random import choices
 import sys
+from rich import print
 
 
 class OutOfOptionsError(Exception):
@@ -11,9 +12,13 @@ class PCFG:
         self.grammar = grammar
 
     def sample(self, node, verbose=False):
-        options, probs = self.get_available_options(node, verbose)
+        available_options, available_probs = self.get_available_options(node, verbose)
+        # if verbose: print(f"Sampled options for node {node.id} at level {node.level}: {available_options}, {available_probs}")
+        options, probs = self.filter_options(node, available_options, available_probs)
+        if verbose: print(f"Filtered options for node {node.id} at level {node.level}: {[op.name for op in options]}")
+        node.available_rules = {"options": options, "probs": probs}
         if len(options) > 0:
-            if verbose: print(f"Sampled options for node {node.id} at level {node.level}: {options}, {probs}")
+            # if verbose: print(f"Sampled options for node {node.id} at level {node.level}: {options}, {probs}")
             operation = choices(
                 options,
                 weights=probs,
@@ -30,11 +35,10 @@ class PCFG:
         if node.available_rules == None:
             available_options = self.grammar[node.level]["options"]
             available_probs = self.grammar[node.level]["probs"]
-            if verbose: print(f"Sampled options for node {node.id} at level {node.level}: {available_options}, {available_probs}")
-            options, probs = self.filter_options(node, available_options, available_probs)
-            if verbose: print(f"Filtered options for node {node.id} at level {node.level}: {options}, {probs}")
-            node.available_rules = {"options": options, "probs": probs}
-        return node.available_rules["options"], node.available_rules["probs"]
+        else:
+            available_options = node.available_rules["options"]
+            available_probs = node.available_rules["probs"]
+        return available_options, available_probs
 
     def filter_options(self, node, options, probs):
         indices = [i for i, op in enumerate(options) if op.valid(node)]

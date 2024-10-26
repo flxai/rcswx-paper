@@ -42,7 +42,7 @@ def valid_sequential_module(node):
     return True
 
 sequential_module = Operation(
-    name="seq_mod",
+    name="sequential",
     build=build_sequential_module,
     infer=infer_sequential_module,
     valid=valid_sequential_module,
@@ -78,7 +78,7 @@ def valid_branching_module_2(node):
     return True
 
 branching_module_2 = Operation(
-    name="branch_mod(2)",
+    name="branching(2)",
     build=build_branching_module_2,
     infer=infer_branching_module_2,
     valid=valid_branching_module_2,
@@ -119,7 +119,7 @@ def valid_branching_module_4(node):
     return True
 
 branching_module_4 = Operation(
-    name="branch_mod(4)",
+    name="branching(4)",
     build=build_branching_module_4,
     infer=infer_branching_module_4,
     valid=valid_branching_module_4,
@@ -157,7 +157,7 @@ def valid_branching_module_8(node):
     return True
 
 branching_module_8 = Operation(
-    name="branch_mod(8)",
+    name="branching(8)",
     build=build_branching_module_8,
     infer=infer_branching_module_8,
     valid=valid_branching_module_8,
@@ -193,7 +193,7 @@ def valid_routing_module(node):
     return True
 
 routing_module = Operation(
-    name="rout_mod",
+    name="routing",
     build=build_routing_module,
     infer=infer_routing_module,
     valid=valid_routing_module,
@@ -227,7 +227,7 @@ def valid_computation_module(node):
     return True
 
 computation_module = Operation(
-    name="comp_mod",
+    name="computation",
     build=build_computation_module,
     infer=infer_computation_module,
     valid=valid_computation_module,
@@ -287,11 +287,15 @@ def infer_group(branching_factor, dim, node):
     }
 
 def valid_group(branching_factor, dim, node):
-    return len(node.input_params["shape"]) > dim and node.input_params["shape"][dim] % branching_factor == 0
+    return (
+        len(node.input_params["shape"]) > dim and
+        node.input_params["shape"][dim] > 0 and
+        node.input_params["shape"][dim] % branching_factor == 0
+    )
 
 def group(branching_factor, dim):
     return Operation(
-        name=f"group({branching_factor}, {dim})",
+        name=f"group({branching_factor},{dim})",
         build=partial(build_group, branching_factor, dim),
         infer=partial(infer_group, branching_factor, dim),
         valid=partial(valid_group, branching_factor, dim),
@@ -374,7 +378,7 @@ def valid_cat(dim, node):
 
 def cat(branching_factor, dim):
     return Operation(
-        name=f"cat({branching_factor}, {dim})",
+        name=f"cat({branching_factor},{dim})",
         build=partial(build_cat, dim),
         infer=partial(infer_cat, branching_factor, dim),
         valid=partial(valid_cat, dim),
@@ -464,7 +468,7 @@ def valid_permute(perm, node):
 # prerouting functions
 def permute(perm):
     return Operation(
-        name=f"perm({perm})",
+        name=f"perm({','.join(map(str,perm))})",
         build=partial(build_permute, perm),
         infer=partial(infer_permute, perm),
         valid=partial(valid_permute, perm),
@@ -520,7 +524,7 @@ def valid_im2col(kernel_size, node):
 
 def im2col(kernel_size, stride, padding):
     return Operation(
-        name=f"im2col({kernel_size}, {stride}, {padding})",
+        name=f"im2col({kernel_size},{stride},{padding})",
         build=partial(build_im2col, kernel_size, stride, padding),
         infer=partial(infer_im2col, kernel_size, stride, padding),
         valid=partial(valid_im2col, kernel_size),
@@ -640,7 +644,7 @@ relu = Operation(
 )
 
 def build_softmax(node):
-    return nn.Softmax()
+    return nn.Softmax(dim=-1)
 
 def infer_softmax(node):
     return node.input_params
@@ -660,7 +664,7 @@ softmax = Operation(
 )
 
 def build_positional_encoding(node):
-    return layers.PositionalEncoding(node.input_params["shape"])
+    return layers.LearnablePositionalEncoding(node.input_params["shape"])
 
 def infer_positional_encoding(node):
     return node.input_params

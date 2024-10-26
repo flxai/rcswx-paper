@@ -1,5 +1,6 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 colours = {
@@ -21,7 +22,7 @@ colours = {
 }
 
 
-def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1):
+def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, iteration=None):
     def add_edges(graph, root, stack=None, current_node_id=None):
         if root is not None:
             op_name = root.operation.name if root.operation else ""
@@ -81,7 +82,7 @@ def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1):
 
     fig = plt.figure(figsize=(8 * scale, 6 * scale))
     ax = fig.add_subplot(111)
-    ax.set_title("Derivation Tree")
+    ax.set_title(f"Derivation Tree at iteration {iteration}")
     nx.draw(
         G, pos, labels=labels, with_labels=True,
         node_size=(60 * scale) ** 2, node_color=colors, edgecolors=border_colors, linewidths=2,
@@ -99,7 +100,7 @@ def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1):
     plt.show()
 
 
-def visualise_search_tree(root, children, Q, N, scale=1):
+def visualise_search_tree(root, children, Q, N, path=None, scale=1, layout="twopi", iteration=None):
     def add_edges(graph, root, children, Q, N):
         if root is not None:
             graph.add_node(
@@ -112,7 +113,9 @@ def visualise_search_tree(root, children, Q, N, scale=1):
             if root in children:
                 for child in children[root]:
                     add_edges(graph, child, children, Q, N)
-                    graph.add_edge(root.id, child.id)
+                    edge_color = "magenta" if (root.id, child.id) in path else "grey"
+                    thickness = (Q[child] / (N[child] + 0.01)) * 5 + 0.2
+                    graph.add_edge(root.id, child.id, color=edge_color, thickness=thickness)
 
     # Create a directed graph
     G = nx.DiGraph()
@@ -129,23 +132,25 @@ def visualise_search_tree(root, children, Q, N, scale=1):
 
     # Draw the graph
     # tree layout
-    pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
+    pos = nx.nx_agraph.graphviz_layout(G, prog=layout)
     labels = {}
     for i, node in enumerate(G.nodes):
         labels[node] = f"{node}\n{nx.get_node_attributes(G, 'op_name')[node]}\n" \
             f"{nx.get_node_attributes(G, 'score')[node]:.2f}/" \
             f"{nx.get_node_attributes(G, 'visits')[node]}"
     colors = nx.get_node_attributes(G, 'color').values()
+    edge_color = [G[u][v]["color"] for u, v in G.edges]
+    edge_thickness = [G[u][v]["thickness"] * scale for u, v in G.edges]
 
-    fig = plt.figure(figsize=(8 * scale, 6 * scale))
+    fig = plt.figure(figsize=(12 * scale, 12 * scale))
     ax = fig.add_subplot(111)
-    ax.set_title("Search Tree")
+    ax.set_title(f"Search Tree at iteration {iteration}")
     nx.draw(
         G, pos, labels=labels, with_labels=True,
-        node_size=(60 * scale) ** 2, node_color=colors, linewidths=2,
+        node_size=(42 * scale) ** 2, node_color=colors, linewidths=2,
         font_size=6 * scale, font_color="white", font_weight="bold",
         arrows=True, arrowsize=20 * scale, arrowstyle="->",
-        edge_color="gray", width=2 * scale, ax=ax
+        edge_color=edge_color, width=edge_thickness, ax=ax
     )
     # edit the text of the nodes
     # labels = nx.get_edge_attributes(G, "output_val")
@@ -155,3 +160,79 @@ def visualise_search_tree(root, children, Q, N, scale=1):
     # extend the margins
     plt.margins(0.05 + 0.05 * scale)
     plt.show()
+
+
+def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="twopi", iteration=None, save_path=None, show=True):
+    def add_edges(graph, root, children, Q, N):
+        if root is not None:
+            graph.add_node(
+                root.id,
+                op_name=root.operation.name if root.operation else "",
+                score=Q[root],
+                visits=N[root],
+                color=colours[root.node.level] if root.id > 1 else colours["root"],
+            )
+            if root in children:
+                for child in children[root]:
+                    add_edges(graph, child, children, Q, N)
+                    edge_color = "#ab3396" if (root.id, child.id) in path else "grey"
+                    thickness = 2 if (root.id, child.id) in path else 1
+                    graph.add_edge(root.id, child.id, color=edge_color, thickness=thickness)
+
+    # Create a directed graph
+    G = nx.DiGraph()
+
+    # Add edges to the graph
+    add_edges(G, root, children, Q, N)
+
+    # get the depth of the tree
+    depth = max(nx.shortest_path_length(G, source=1).values()) + 1
+    # get max degree of tree
+    max_degree = max([G.out_degree(node) for node in G.nodes])
+    # and the width of the tree (i.e. number of leaves)
+    width = max_degree ** (depth - 1)
+
+    # Draw the graph
+    # tree layout
+    pos = nx.nx_agraph.graphviz_layout(G, prog=layout)
+    labels = {}
+    for i, node in enumerate(G.nodes):
+        labels[node] = f"{node}\n{nx.get_node_attributes(G, 'op_name')[node]}\n" \
+            f"{nx.get_node_attributes(G, 'score')[node]:.2f}/" \
+            f"{nx.get_node_attributes(G, 'visits')[node]}"
+    n_colors = 100
+    palette = sns.color_palette("ch:start=.2,rot=-.3", n_colors=n_colors)
+    # assign the colours according to their score/visits on a scale of 0 to 9
+    scores = nx.get_node_attributes(G, 'score').values()
+    visits = nx.get_node_attributes(G, 'visits').values()
+    colors = [
+        palette[int((n_colors - 1) * score / (visit + 0.01))] if visit > 0 else "#cccccc"
+        for score, visit in zip(scores, visits)
+    ]
+    sizes = [(16 * scale) ** 2 if visit > 0 else (16 * scale) ** 2 for visit in visits]
+    edge_color = [G[u][v]["color"] for u, v in G.edges]
+    edge_thickness = [G[u][v]["thickness"] * scale for u, v in G.edges]
+
+    fig = plt.figure(figsize=(12 * scale, 12 * scale))
+    ax = fig.add_subplot(111)
+    ax.set_title(f"Search Tree at iteration {iteration}")
+    nx.draw(
+        G, pos, labels=None, with_labels=False,
+        node_size=sizes, node_color=colors, linewidths=2,
+        font_size=6 * scale, font_color="white", font_weight="bold",
+        arrows=True, arrowsize=20 * scale, arrowstyle="-",
+        edge_color=edge_color, width=edge_thickness, ax=ax
+    )
+    # edit the text of the nodes
+    # labels = nx.get_edge_attributes(G, "output_val")
+    # nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+    # change the size of the figure
+    # plt.gcf().set_size_inches(8, 6)
+    # extend the margins
+    # plt.margins(0.05 + 0.05 * scale)
+    if save_path is not None:
+        plt.savefig(f"{save_path}_{iteration}.png")
+        plt.savefig(f"{save_path}.pdf")
+    if show:
+        plt.show()
+    plt.close()
