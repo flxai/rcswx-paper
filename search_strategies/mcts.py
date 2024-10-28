@@ -284,9 +284,9 @@ class MCTS:
         # and instantiates all nodes in the path to the leaf node
         # given the existing operations and params in these nodes
         # that will ensure that the deepcopy does not interfer in the simulation
-        simulation_path = deepcopy(path)
         success = False
         while not success:
+            simulation_path = deepcopy(path)
             final_leaf, reward = self._simulate(simulation_path)
             if final_leaf is not None:
                 success = True
