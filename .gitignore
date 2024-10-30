@@ -1,6 +1,7 @@
-# figures and results
-figures*
-results*
+# figures, results and logs
+figures/
+results/
+logs/
 
 # data
 data/

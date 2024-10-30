@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from search_state import Operation
 
-from einspace import layers
+import layers
 
 
 def inherit_first_child(node):
@@ -556,7 +556,8 @@ def valid_col2im(node):
     return (
         len(node.input_params["shape"]) == 3 and
         node.input_params["mode"] == "col" and
-        node.input_params["last_im_shape"] != None
+        node.input_params["last_im_shape"] != None and
+        node.input_params["shape"][1] == torch.prod(torch.tensor(node.input_params["last_im_shape"]))
     )
 
 col2im = Operation(

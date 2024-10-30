@@ -1,3 +1,6 @@
+from os.path import join
+from os import makedirs
+
 import networkx as nx
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -231,8 +234,9 @@ def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="tw
     # extend the margins
     # plt.margins(0.05 + 0.05 * scale)
     if save_path is not None:
-        plt.savefig(f"{save_path}_{iteration}.png")
-        plt.savefig(f"{save_path}.pdf")
+        makedirs(save_path, exist_ok=True)
+        plt.savefig(join(save_path, f"search_tree_{iteration}.png"))
+        plt.savefig(join(save_path, f"search_tree.pdf"))
     if show:
         plt.show()
     plt.close()

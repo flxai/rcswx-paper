@@ -125,6 +125,13 @@ class DerivationTreeNode:
             return self
         return self.parent.get_root()
 
+    def serialise(self):
+        # return a list of the nodes in the derivation tree, in pre-order traversal
+        nodes = [self]
+        for child in self.children:
+            nodes.extend(child.serialise())
+        return nodes
+
     def limit_options(self, operation):
         # get index of the operation in the available rules
         # print(f"Node {self.id}: {self}")

@@ -6,6 +6,9 @@ https://gist.github.com/qpwo/c538c6f73727e254fdc7fab81024f6e1
 """
 from collections import defaultdict
 from copy import deepcopy
+from glob import glob
+from os.path import join
+from os import makedirs
 import pickle
 from pcfg import OutOfOptionsError
 from search_state import Stack, DerivationTreeNode
@@ -170,7 +173,6 @@ class MCTS:
             pcfg,
             input_params,
             seed=0,
-            exploration_weight=1,
             mode="iterative",
             backtrack=True,
             max_id_limit=1000,
@@ -180,14 +182,16 @@ class MCTS:
             visualise=False,
             visualise_after_iteration=None,
             visualise_scale=0.5,
-            save_fig_path=None,
-            save_results_path=None,
+            figures_path=None,
+            results_path=None,
+            continue_search=False,
+            # mcts specific parameters
+            exploration_weight=1,
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
         self.input_params = input_params
         self.seed = seed
-        self.exploration_weight = exploration_weight
         self.mode = mode
         self.backtrack = backtrack
         self.max_id_limit = max_id_limit
@@ -197,22 +201,25 @@ class MCTS:
         self.visualise = visualise
         self.visualise_after_iteration = visualise_after_iteration
         self.visualise_scale = visualise_scale
-        self.save_fig_path = save_fig_path
-        self.save_results_path = save_results_path
+        self.figures_path = figures_path
+        self.results_path = results_path
+        self.continue_search = continue_search
+        # mcts specific parameters
+        self.exploration_weight = exploration_weight
 
-        self.Q = defaultdict(int)  # total reward of each node
-        self.N = defaultdict(int)  # total visit count for each node
-        self.children = dict()  # children of each node
+        initial_derivation_tree_max_id = 1
+        initial_search_tree_max_id = 1
 
-        self.set_seed()
-
-    def set_seed(self):
-        random.seed(self.seed)
-
-    def learn(self, rollouts=10):
-        root = DerivationTreeNode(1, "network", input_params=self.input_params)
-        node = SearchTreeNode(
-            id=1,
+        # default initialisation of the search
+        self.Q = defaultdict(int)
+        self.N = defaultdict(int)
+        self.children = dict()
+        self.rewards = []
+        self.iteration = 0
+        self.search_tree_max_id = initial_search_tree_max_id
+        root = DerivationTreeNode(initial_derivation_tree_max_id, "network", input_params=self.input_params)
+        self.search_tree_root = SearchTreeNode(
+            id=self.search_tree_max_id,
             pcfg=self.pcfg,
             node=root,
             operation=None,
@@ -221,36 +228,60 @@ class MCTS:
             verbose=self.verbose,
             backtrack=self.backtrack
         ) # The root of the search tree
-        self.search_tree_max_id = 1
-        self._expand(node)
+        # set the random seed
+        self.set_rng_state(seed=self.seed)
 
-        # You can train as you go, or only at the beginning.
-        # Here, we train as we go, doing 10 rollouts each turn.
-        for iteration in tqdm(range(rollouts)):
+        # continue search from previous results
+        if self.continue_search:
+            self.load_results()
+
+    def set_rng_state(self, seed=None, state=None):
+        if state:
+            random.setstate(state)
+        elif seed:
+            random.seed(seed)
+
+    def learn(self, steps=10):
+        print("-----------------------")
+        print("Monte Carlo Tree Search")
+        print(f"Steps: {steps}")
+        print("-----------------------")
+
+        # expand the initial search tree from the root
+        print("Initialising search tree: expanding children of root node")
+        self._expand(self.search_tree_root)
+
+        # iterate through the search tree, expanding and simulating
+        for iteration in tqdm(range(self.iteration, steps), desc="MCTS", initial=self.iteration, total=steps):
+            # set the verbose and visualise flags
             if iteration == self.verbose_after_iteration:
                 self.verbose = True
             if iteration == self.visualise_after_iteration:
                 self.visualise = True
 
-            end_node, path = self.do_rollout(node, iteration)
+            # do a single iteration of MCTS
+            end_node, path = self.do_rollout(self.search_tree_root)
+
+            # save to results
+            self.save_results(iteration)
+
+            # visualise the derivation and search trees
             if self.visualise: visualise_derivation_tree(end_node.node.get_root(), scale=self.visualise_scale, iteration=iteration)
             if self.verbose: print("Path", path)
             visualise_search_tree(
-                node,
+                self.search_tree_root,
                 self.children,
                 self.Q,
                 self.N,
                 path=[(a.id, b.id) for a, b in zip(path[0:], path[1:])],
                 scale=self.visualise_scale,
                 iteration=iteration,
-                save_path=self.save_fig_path,
+                save_path=self.figures_path,
                 show=self.visualise,
             )
-        # node = self.choose(node.get_root())
-        # print(node)
+        # print the final results
         if self.verbose: print(self.Q)
         if self.verbose: print(self.N)
-        # return self.get_best()
 
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
@@ -267,7 +298,7 @@ class MCTS:
 
         return max(self.children[node], key=score)
 
-    def do_rollout(self, node, iteration):
+    def do_rollout(self, node):
         "Make the tree one layer better. (Train for one iteration.)"
         path = self._select(node)
         if self.verbose: print("Path", path)
@@ -296,17 +327,9 @@ class MCTS:
         if self.verbose: print("Simulated architecture, with reward:", reward)
         self._backpropagate(path, reward)
         if self.verbose: print("Backpropagated reward")
-        # save to results
-        if self.save_results_path:
-            with open(f"{self.save_results_path}/results_{iteration}.pkl", "wb") as f:
-                pickle.dump({
-                    "leaf": final_leaf,
-                    "reward": reward,
-                    "path": path,
-                    "Q": self.Q,
-                    "N": self.N,
-                    "children": self.children
-                }, f)
+        serialised_architecture = final_leaf.node.get_root().serialise()
+        self.rewards.append((serialised_architecture, reward))
+        print(f"Reward: {reward}, Architecture: {serialised_architecture}")
         return final_leaf, path
 
     def _select(self, node):
@@ -328,6 +351,9 @@ class MCTS:
         "Update the `children` dict with the children of `node`"
         if node in self.children:
             return  # already expanded
+        if self.is_terminal(node):
+            if self.verbose: print(f"Node stid={node.id} is at the end of a path")
+            return # terminal node
         if self.verbose: print(f"Expanding node {node}")
         new_children, self.search_tree_max_id = node.find_children(self.search_tree_max_id)
         self.children[node] = new_children
@@ -345,7 +371,7 @@ class MCTS:
                     node = path_node
                 if self.verbose:
                     node.verbose = True
-                if self.verbose: visualise_derivation_tree(node.node.get_root(), scale=self.visualise_scale, iteration=0)
+                # if self.verbose: visualise_derivation_tree(node.node.get_root(), scale=self.visualise_scale, iteration=0)
                 if self.is_terminal(node):
                     # if self.visualise: visualise_derivation_tree(node.node.get_root(), scale=self.visualise_scale, iteration=0)
                     return node, self._reward(node)
@@ -358,7 +384,7 @@ class MCTS:
                     return None, None
                 if self.verbose:
                     node.verbose = True
-                if self.verbose: visualise_derivation_tree(node.node.get_root(), scale=self.visualise_scale, iteration=0)
+                # if self.verbose: visualise_derivation_tree(node.node.get_root(), scale=self.visualise_scale, iteration=0)
                 if self.is_terminal(node):
                     # if self.visualise: visualise_derivation_tree(node.node.get_root(), scale=self.visualise_scale, iteration=0)
                     return node, self._reward(node)
@@ -394,7 +420,44 @@ class MCTS:
 
     def _reward(self, node):
         "Return the reward for the node"
-        return self.evaluation_fn(node.node.get_root(), verbose=self.verbose)
+        reward = self.evaluation_fn(node.node.get_root(), verbose=self.verbose)
+        return reward
 
     def is_terminal(self, node):
         return node.stack.is_empty()
+
+    def save_results(self, iteration):
+        if self.results_path:
+            makedirs(self.results_path, exist_ok=True)
+            with open(join(self.results_path, f"search_results_{iteration}.pkl"), "wb") as f:
+                pickle.dump({
+                    "rewards": self.rewards,
+                    "Q": self.Q,
+                    "N": self.N,
+                    "children": self.children,
+                    "iteration": iteration,
+                    "search_tree_max_id": self.search_tree_max_id,
+                    "search_tree_root": self.search_tree_root,
+                    "rng_state": random.getstate(),
+                }, f)
+
+    def load_results(self):
+        # find the latest search results
+        latest_results = glob(join(self.results_path, "search_results_*.pkl"))
+        if latest_results:
+            latest_results = sorted(latest_results, key=lambda x: int(x.split("_")[-1].split(".")[0]))
+            latest_results = latest_results[-1]
+            with open(latest_results, "rb") as f:
+                data = pickle.load(f)
+                self.Q = data["Q"]
+                self.N = data["N"]
+                self.children = data["children"]
+                self.rewards = data["rewards"]
+                self.iteration = data["iteration"] + 1
+                self.search_tree_max_id = data["search_tree_max_id"]
+                self.search_tree_root = data["search_tree_root"]
+                # set the random seed
+                self.set_rng_state(state=data["rng_state"])
+                print(f"Continuing search from iteration {self.iteration}")
+        else:
+            print("No previous search results found, starting from scratch")
