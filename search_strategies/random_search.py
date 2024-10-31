@@ -50,6 +50,7 @@ class RandomSearch:
         self.continue_search = continue_search
 
         self.rewards = []
+        self.iteration = 0
 
         self.set_rng_state(seed=self.seed)
 
@@ -100,7 +101,7 @@ class RandomSearch:
 
         # evaluate the network
         reward = self.evaluation_fn(node)
-        self.rewards.append((node.node.get_root().serialise(), reward))
+        self.rewards.append((node.get_root().serialise(), reward))
 
         # save the results
         self.save_results(iteration)
@@ -117,6 +118,7 @@ class RandomSearch:
                 if self.verbose: print(f"Breaking at max_id: {max_id}, time: {time.time() - start_time}")
                 return None, stack, max_id, time.time() - start_time
 
+            if self.verbose: print(f"Duration: {time.time() - start_time}, Time limit: {self.time_limit}")
             if self.verbose: print(f"Stack: {stack}, max_id: {max_id}")
             node, visited = stack.pop()
 
