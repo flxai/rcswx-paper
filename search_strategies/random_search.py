@@ -1,5 +1,4 @@
-from glob import glob
-from os.path import join
+from os.path import join, exists
 from os import makedirs
 import pickle
 import time
@@ -7,9 +6,86 @@ import random
 
 from tqdm import tqdm
 
+from utils import Timer
 from visualise import visualise_derivation_tree
 from search_state import DerivationTreeNode, Stack
 from pcfg import OutOfOptionsError
+
+
+class Sampler:
+    def __init__(self, pcfg, mode, max_depth=20, time_limit=300, max_id_limit=1000, verbose=False):
+        self.pcfg = pcfg
+        self.mode = mode
+        self.max_depth = max_depth
+        self.time_limit = time_limit
+        self.max_id_limit = max_id_limit
+        self.verbose = verbose
+
+        self.nodes = {}
+
+        if self.mode == "iterative":
+            self.__call__ = self.sample_iterative
+        elif self.mode == "recursive":
+            raise NotImplementedError("Recursive mode not implemented")
+
+    def sample_iterative(self, input_params, operations=None, timer=Timer()):
+        root = DerivationTreeNode(id=1, level="network", input_params=input_params)
+        self.nodes = {root.id: root}
+
+        max_id = root.id
+        stack = Stack([(root.id, False)])
+
+        while not stack.is_empty():
+
+            if self.verbose: print(f"Stack: {stack}")
+            node_id, visited = stack.pop()
+            node = self.nodes[node_id]
+            if self.verbose: print(f"Node: {node.id}, visited: {visited}")
+            if self.verbose: print(f"Node: {node}")
+
+            if visited:
+                # Propagate the output params to the parent
+                node.give_back_output_params()
+                if not node.is_root():
+                    if self.verbose: print(f"Propagated output params from node {node.id} to parent {node.parent.id}")
+                    if self.verbose: print(f"Output params for node: {node.parent.id}, {node.parent.output_params}")
+            else:
+                stack.append((node.id, True))
+                if not node.is_root():
+                    # inherit the input params from the parent
+                    node.inherit_input_params()
+                    if self.verbose: print(f"Inherited input params from parent {node.parent.id} to node {node.id}")
+                    if self.verbose: print(f"Input params for node: {node.id}, {node.input_params}")
+                try:
+                    if self.verbose: print(f"Sampling node {node.id}")
+                    # select operation and initialise the node, children etc.
+                    operation = operations.pop(0) if operations else self.pcfg.sample(
+                        node,
+                        limits={
+                            "max_depth": self.max_depth,
+                            "time_limit": self.time_limit,
+                            "max_id_limit": self.max_id_limit,
+                        },
+                        duration=timer(),
+                        verbose=self.verbose,
+                    )
+                    stack, max_id = node.initialise(
+                        operation,
+                        stack,
+                        max_id,
+                    )
+                    for child in node.children:
+                        if child.id not in self.nodes:
+                            self.nodes[child.id] = child
+                except OutOfOptionsError:
+                    # get the precursor node, and remove the previously chosen operation from its options
+                    node = node.get_precursor()
+                    # backtrack to the previous state of the stack
+                    stack, _ = node.memory
+                    stack.restore(stack, node)
+                    if self.verbose: print(f"Backtracked to node {node.id}")
+        self.nodes = {}
+        return root
 
 
 class RandomSearch:
@@ -23,6 +99,7 @@ class RandomSearch:
             backtrack=True,
             max_id_limit=1000,
             time_limit=300,
+            max_depth=20,
             verbose=False,
             verbose_after_iteration=None,
             visualise=False,
@@ -40,6 +117,7 @@ class RandomSearch:
         self.backtrack = backtrack
         self.max_id_limit = max_id_limit
         self.time_limit = time_limit
+        self.max_depth = max_depth
         self.verbose = verbose
         self.verbose_after_iteration = verbose_after_iteration
         self.visualise = visualise
@@ -49,6 +127,15 @@ class RandomSearch:
         self.results_path = results_path
         self.continue_search = continue_search
 
+        self.sampler = Sampler(
+            pcfg=self.pcfg,
+            mode=self.mode,
+            max_depth=self.max_depth,
+            time_limit=self.time_limit,
+            max_id_limit=self.max_id_limit,
+            verbose=self.verbose
+        )
+
         self.rewards = []
         self.iteration = 0
 
@@ -56,11 +143,6 @@ class RandomSearch:
 
         if self.continue_search:
             self.load_results()
-
-        if mode == "iterative":
-            self.sample_fn = self.sample_iterative
-        elif mode == "recursive":
-            self.sample_fn = self.sample_recursive
 
     def set_rng_state(self, seed=None, state=None):
         if state:
@@ -75,98 +157,39 @@ class RandomSearch:
         print("--------------")
 
         for iteration in tqdm(range(self.iteration, steps), desc="RS", initial=self.iteration, total=steps):
-            node, reward = self.sample(iteration)
-            print(f"Step {iteration}, reward: {reward}")
+            global timer
+            timer = Timer()
+            root = self.sampler(self.input_params)
+            sample_duration = timer()
 
-    def sample(self, iteration):
-        root = DerivationTreeNode(1, "network", input_params=self.input_params)
+            # evaluate the network
+            timer = Timer()
+            reward = self.evaluation_fn(root)
+            eval_duration = timer()
+            self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
+            print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
+            print(f"Architecture:")
+            for line in root.serialise():
+                print(line)
 
-        max_id = 1
-        stack = Stack([(root, False)])
+            # visualise the derivation tree
+            visualise_derivation_tree(
+                root,
+                scale=self.visualise_scale,
+                iteration=iteration,
+                save_path=self.figures_path,
+                show=self.visualise,
+            )
 
-        # sample the network, and keep going until we successfully sample a network
-        try:
-            success = False
-            while not success:
-                node, stack, max_id, duration = self.sample_fn(
-                    root,
-                    stack,
-                    max_id,
-                )
-                if node is not None:
-                    success = True
-        except OutOfOptionsError:
-            print("Reached dead end, returning reward 0")
-            return root, 0
+            # save the results
+            self.save_results(iteration)
 
-        # evaluate the network
-        reward = self.evaluation_fn(node)
-        self.rewards.append((node.get_root().serialise(), reward))
-
-        # save the results
-        self.save_results(iteration)
-
-        return node, reward
-        
-
-    def sample_iterative(self, node, stack, max_id):
-        start_time = time.time()
-        i = 0
-        while not stack.is_empty():
-            i += 1
-            if max_id > self.max_id_limit or time.time() - start_time > self.time_limit:
-                if self.verbose: print(f"Breaking at max_id: {max_id}, time: {time.time() - start_time}")
-                return None, stack, max_id, time.time() - start_time
-
-            if self.verbose: print(f"Duration: {time.time() - start_time}, Time limit: {self.time_limit}")
-            if self.verbose: print(f"Stack: {stack}, max_id: {max_id}")
-            node, visited = stack.pop()
-
-            if self.verbose: visualise_derivation_tree(node.get_root(), stack.stack, current_node_id=node.id)
-
-            if node:
-                if visited:
-                    # Propagate the output params to the parent
-                    node.give_back_output_params()
-                    if not node.is_root():
-                        if self.verbose: print(f"Propagated output params from node {node.id}({hex(id(node))}) to parent {node.parent.id}({hex(id(node.parent))})")
-                        if self.verbose: print(f"Output params for node: {node.parent.id}, {node.parent.output_params}")
-                else:
-                    stack.append((node, True))
-                    if not node.is_root():
-                        # inherit the input params from the parent
-                        node.inherit_input_params()
-                        if self.verbose: print(f"Inherited input params from parent {node.parent.id}({hex(id(node.parent))}) to node {node.id}({hex(id(node))})")
-                        if self.verbose: print(f"Input params for node: {node.id}, {node.input_params}")
-                    try:
-                        # select operation and initialise the node, children etc.
-                        stack, max_id = node.initialise(self.pcfg.sample(node, verbose=self.verbose), stack, max_id)
-                        if self.verbose: print(f"Memory of node {node.id}: {node.memory}")
-                    except OutOfOptionsError:
-                        if self.verbose: print(f"Out of options for node dtid={node.id}")
-                        if self.backtrack:
-                            # get the precursor node, and remove the previously chosen operation from its options
-                            node = node.get_precursor()
-                            if self.verbose: print(f"Backtracked to precursor node {node.id}")
-                            # backtrack to the previous state of the stack
-                            if self.verbose: print(f"Removing node {stack.stack[-1][0].id} operation {node.operation.name} from its available rules {stack.stack[-1][0].available_rules['options']}")
-                            stack.restore(self.stack, node)
-                            if self.verbose: print(f"Backtracked to node dtid={node.id}")
-                            if self.verbose: print(f"Stack of node dtid={node.id}: {stack}")
-                        else:
-                            raise OutOfOptionsError
-        return node.get_root(), stack, max_id, time.time() - start_time
-
-    def sample_recursive(self, root, stack, max_id):
-        """
-        Recursive version of the sampling function
-        """
-        return None, None, None, None
+            timer.stop()
 
     def save_results(self, iteration):
         if self.results_path:
             makedirs(self.results_path, exist_ok=True)
-            with open(join(self.results_path, f"search_results_{iteration}.pkl"), "wb") as f:
+            with open(join(self.results_path, f"search_results.pkl"), "wb") as f:
                 pickle.dump({
                     "rewards": self.rewards,
                     "iteration": iteration,
@@ -174,12 +197,10 @@ class RandomSearch:
                 }, f)
 
     def load_results(self):
-        # find the latest search results
-        latest_results = glob(join(self.results_path, "search_results_*.pkl"))
-        if latest_results:
-            latest_results = sorted(latest_results, key=lambda x: int(x.split("_")[-1].split(".")[0]))
-            latest_results = latest_results[-1]
-            with open(latest_results, "rb") as f:
+        # load the search results
+        path = join(self.results_path, "search_results.pkl")
+        if exists(path):
+            with open(path, "rb") as f:
                 data = pickle.load(f)
                 self.rewards = data["rewards"]
                 self.iteration = data["iteration"] + 1

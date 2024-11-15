@@ -2,6 +2,7 @@ from os.path import join
 
 from .random_search import RandomSearch
 from .mcts import MCTS
+import utils
 
 __all__ = [
     "RandomSearch",
@@ -21,51 +22,21 @@ def create_search_strategy(args, grammar, evaluation_fn, input_params):
         "random_search": {
             "figures_path": join(
                 args.figures_path,
-                args.grammar,
-                args.search_strategy,
-                args.dataset,
-                f"seed={args.seed}",
-                f"backtrack={args.backtrack}",
-                f"mode={args.mode}",
-                f"time_limit={args.time_limit}",
-                f"max_id_limit={args.max_id_limit}",
+                utils.get_exp_path(args),
             ),
             "results_path": join(
                 args.results_path,
-                args.grammar,
-                args.search_strategy,
-                args.dataset,
-                f"seed={args.seed}",
-                f"backtrack={args.backtrack}",
-                f"mode={args.mode}",
-                f"time_limit={args.time_limit}",
-                f"max_id_limit={args.max_id_limit}",
+                utils.get_exp_path(args),
             ),
         },
         "mcts": {
             "figures_path": join(
                 args.figures_path,
-                args.grammar,
-                args.search_strategy,
-                args.dataset,
-                f"seed={args.seed}",
-                f"backtrack={args.backtrack}",
-                f"mode={args.mode}",
-                f"time_limit={args.time_limit}",
-                f"max_id_limit={args.max_id_limit}",
-                f"exploration_weight={args.exploration_weight}",
+                utils.get_exp_path(args),
             ),
             "results_path": join(
                 args.results_path,
-                args.grammar,
-                args.search_strategy,
-                args.dataset,
-                f"seed={args.seed}",
-                f"backtrack={args.backtrack}",
-                f"mode={args.mode}",
-                f"time_limit={args.time_limit}",
-                f"max_id_limit={args.max_id_limit}",
-                f"exploration_weight={args.exploration_weight}",
+                utils.get_exp_path(args),
             ),
             "exploration_weight": args.exploration_weight,
         }
@@ -82,6 +53,7 @@ def create_search_strategy(args, grammar, evaluation_fn, input_params):
         backtrack=args.backtrack,
         max_id_limit=args.max_id_limit,
         time_limit=args.time_limit,
+        max_depth=args.max_depth,
         verbose=args.verbose_search,
         verbose_after_iteration=args.print_after,
         visualise=args.visualise,

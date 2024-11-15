@@ -13,6 +13,9 @@ from arguments import parse_arguments
 # parse the arguments
 args = parse_arguments()
 
+# set the seed
+torch.manual_seed(args.seed)
+
 # create the grammar
 grammar = PCFG(grammars[args.grammar])
 

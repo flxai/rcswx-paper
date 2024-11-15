@@ -11,8 +11,9 @@ def parse_arguments():
     parser.add_argument("--exploration_weight", type=float, default=1.0, help="The exploration weight to use.")
     parser.add_argument("--backtrack", action="store_true", help="Backtrack when out of options.")
     parser.add_argument("--mode", type=str, default="iterative", help="The mode to use.")
-    parser.add_argument("--time_limit", type=int, default=60, help="The time limit to use.")
+    parser.add_argument("--time_limit", type=int, default=300, help="The time limit to use.")
     parser.add_argument("--max_id_limit", type=int, default=1000, help="The maximum ID limit to use.")
+    parser.add_argument("--max_depth", type=int, default=20, help="The maximum depth to use.")
     # evaluation details
     parser.add_argument("--dataset", type=str, default="mnist", help="The dataset to use.")
     parser.add_argument("--epochs", type=int, default=1, help="The number of epochs to train for.")

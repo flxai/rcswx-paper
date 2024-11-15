@@ -25,7 +25,7 @@ colours = {
 }
 
 
-def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, iteration=None):
+def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, iteration=None, save_path=None, show=False):
     def add_edges(graph, root, stack=None, current_node_id=None):
         if root is not None:
             op_name = root.operation.name if root.operation else ""
@@ -100,7 +100,13 @@ def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, i
     # plt.gcf().set_size_inches(8, 6)
     # extend the margins
     plt.margins(0.05 + 0.05 * scale)
-    plt.show()
+    if save_path is not None:
+        makedirs(save_path, exist_ok=True)
+        plt.savefig(join(save_path, f"derivation_tree_{iteration}.png"))
+        plt.savefig(join(save_path, f"derivation_tree.pdf"))
+    if show:
+        plt.show()
+    plt.close()
 
 
 def visualise_search_tree(root, children, Q, N, path=None, scale=1, layout="twopi", iteration=None):
@@ -165,7 +171,7 @@ def visualise_search_tree(root, children, Q, N, path=None, scale=1, layout="twop
     plt.show()
 
 
-def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="twopi", iteration=None, save_path=None, show=True):
+def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="twopi", iteration=None, save_path=None, show=False):
     def add_edges(graph, root, children, Q, N):
         if root is not None:
             graph.add_node(
@@ -212,7 +218,7 @@ def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="tw
         palette[int((n_colors - 1) * score / (visit + 0.01))] if visit > 0 else "#cccccc"
         for score, visit in zip(scores, visits)
     ]
-    sizes = [(16 * scale) ** 2 if visit > 0 else (16 * scale) ** 2 for visit in visits]
+    sizes = [(10 * scale) ** 2 if visit > 0 else (10 * scale) ** 2 for visit in visits]
     edge_color = [G[u][v]["color"] for u, v in G.edges]
     edge_thickness = [G[u][v]["thickness"] * scale for u, v in G.edges]
 

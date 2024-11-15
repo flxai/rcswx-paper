@@ -39,6 +39,7 @@ class SearchTreeNode:
             pcfg,
             node,
             operation,
+            nodes,
             stack,
             max_id,
             max_depth,
@@ -51,6 +52,7 @@ class SearchTreeNode:
         self.pcfg = pcfg
         self.node = node
         self.operation = operation
+        self.nodes = nodes
         self.stack = stack
         self.max_id = max_id
         self.max_depth = max_depth
@@ -59,14 +61,14 @@ class SearchTreeNode:
         self.verbose = verbose
         self.backtrack = backtrack
 
-    def step(self, node, visited, stack, max_id, operation=None):
+    def step(self, node, visited, nodes, stack, max_id, operation=None):
         if self.verbose: print(f"Stepping node dtid={node.id}, visited={visited} with operation {node.operation}")
         if visited:
             # Propagate the output params to the parent
             node.give_back_output_params()
             if self.verbose and not node.is_root(): print(f"Propagated output params from node dtid={node.id}({hex(id(node))}) to parent dtid={node.parent.id}({hex(id(node.parent))})")
         else:
-            stack.append((node, True))
+            stack.append((node.id, True))
             if not node.is_root():
                 # inherit the input params from the parent
                 node.inherit_input_params()
@@ -83,20 +85,26 @@ class SearchTreeNode:
                     duration=timer(),
                     verbose=self.verbose
                 )
-                stack, max_id = node.initialise(operation, stack, max_id, id_stack=False)
+                stack, max_id = node.initialise(operation, stack, max_id)
                 if self.verbose: print(f"initialised node dtid={node.id} with operation {operation}")
+
+                # add the children to the nodes
+                for child in node.children:
+                    nodes[child.id] = child
+
             except OutOfOptionsError:
                 if self.verbose: print(f"Out of options for node dtid={node.id}")
                 if self.backtrack:
                     # get the precursor node, and remove the previously chosen operation from its options
                     node = node.get_precursor()
                     # backtrack to the previous state of the stack
-                    stack.restore(self.stack, node)
+                    stack, _ = node.memory
+                    stack.restore(stack, node)
                     if self.verbose: print(f"Backtracked to node dtid={node.id}")
                     if self.verbose: print(f"Stack of node dtid={node.id}: {stack}")
                 else:
                     raise OutOfOptionsError
-        return node, stack, max_id
+        return node, nodes, stack, max_id
 
     def find_children(self, search_tree_max_id):
         """
@@ -104,11 +112,25 @@ class SearchTreeNode:
         These are the possible operations of the next node in the stack
         """
         stack = deepcopy(self.stack)
+        nodes = deepcopy(self.nodes)
         if self.verbose: print(f"Stack of node stid={self.id}: {stack}")
-        node, visited = stack.pop()
+        print(f"Expanding node: {self}")
+        print(f"Stack of node stid={self.id}: {stack}")
+        print("Nodes")
+        for k, v in nodes.items():
+            print(f"\t{k}: {v}")
+
+        # pop the node from the stack
+        node_id, visited = stack.pop()
+        node = nodes[node_id]
         if self.verbose: print(f"After pop, stack of node stid={self.id}: {stack}")
 
-        if not node.is_root(): node.inherit_input_params()
+        # Inherit the input params from the parent
+        if not node.is_root():
+            print(f"Inheriting input params from parent: {node.parent}")
+            print(f"Parent input params: {node.parent.input_params}")
+            print(f"Parent output params: {node.parent.output_params}")
+            node.inherit_input_params()
         if self.verbose: print(f"Inherited input_params: {node.input_params}")
 
         # find the available and filtered options for the current node
@@ -125,26 +147,29 @@ class SearchTreeNode:
             duration=timer(),
             verbose=self.verbose
         )
-        
         # if self.verbose: print(f"Available options of node dtid={node.id}: {options}")
+
+        # initialise the children nodes
         children = []
         for i, operation in enumerate(options):
-            child_node, child_stack, child_max_id = self.step(deepcopy(node), visited, deepcopy(stack), self.max_id, operation=operation)
+            child_node, child_nodes, child_stack, child_max_id = self.step(deepcopy(node), visited, deepcopy(nodes), deepcopy(stack), self.max_id, operation=operation)
             while not child_stack.is_empty() and child_stack.stack[-1][1]:
                 # while the last element in the stack is visited
                 # we want to pop it and go back to the parent
-                _node, child_visited = child_stack.pop()
-                _node, child_stack, child_max_id = self.step(_node, child_visited, child_stack, child_max_id)
+                _node_id, child_visited = child_stack.pop()
+                _node, child_nodes, child_stack, child_max_id = self.step(nodes[_node_id], child_visited, child_nodes, child_stack, child_max_id)
 
             # extra fix for giving back output params
             def give_back_fix(node):
                 if not node.is_root():
-                    for n, _ in child_stack.stack:
+                    for n_id, _ in child_stack.stack:
+                        n = child_nodes[n_id]
                         if n == node.parent:
                             n.output_params = node.output_params
                             if self.verbose: print(f"Propagated output params from node dtid={node.id}({hex(id(node))}) to parent dtid={n.id}({hex(id(n))})")
                             if self.verbose: print(f"Output params: {n.output_params}")
                             for c in n.children:
+                                c = child_nodes[c.id]
                                 if c.id == node.id:
                                     c.input_params = node.input_params
                                     c.operation = node.operation
@@ -152,51 +177,26 @@ class SearchTreeNode:
                     give_back_fix(node.parent)
             give_back_fix(child_node)
 
+            # nodes[child_node.id] = child_node
+
             child = SearchTreeNode(
                 id=search_tree_max_id + i + 1,
                 pcfg=self.pcfg,
                 node=child_node,
                 operation=child_node.operation,
+                nodes=child_nodes,
                 stack=child_stack,
                 max_id=child_max_id,
                 max_depth=self.max_depth,
                 time_limit=self.time_limit,
                 max_id_limit=self.max_id_limit,
                 verbose=self.verbose,
-                backtrack=self.backtrack
+                backtrack=self.backtrack,
             )
             children.append(child)
             if self.verbose: print(f"Child node {child}\nwith parent {child.node.parent}")
             if self.verbose: print(f"Stack of child node {child.id}: {child.stack}")
         return children, search_tree_max_id + len(children)
-
-    def find_random_child(self, search_tree_max_id, operation=None):
-        "Random successor of this board state (for more efficient simulation)"
-        if self.verbose: print(f"Finding random child of node stid={self.id} with operation {self.operation}")
-        if self.verbose: print(f"Stack of node stid={self.id}: {self.stack}")
-        node, visited = self.stack.pop()
-        # find the available and filtered options for the current node
-        node, stack, max_id = self.step(node, visited, self.stack, self.max_id, operation=operation)
-        while not stack.is_empty() and stack.stack[-1][1]:
-            # while the last element in the stack is visited
-            # we want to pop it and go back to the parent
-            _node, visited = stack.pop()
-            _node, stack, max_id = self.step(_node, visited, stack, max_id)
-        child = SearchTreeNode(
-            search_tree_max_id + 1,
-            self.pcfg,
-            node,
-            node.operation,
-            stack,
-            max_id,
-            max_depth=self.max_depth,
-            time_limit=self.time_limit,
-            max_id_limit=self.max_id_limit,
-            verbose=self.verbose,
-            backtrack=self.backtrack
-        )
-        # if self.verbose: print(f"Child node {child}\nwith parent\n{child.node.parent}")
-        return child, search_tree_max_id + 1
 
     def __hash__(self):
         return hash(self.id)
@@ -281,8 +281,9 @@ class MCTS:
             pcfg=self.pcfg,
             node=root,
             operation=None,
-            stack=Stack([(root, False)]),
-            max_id=1,
+            nodes={root.id: root},
+            stack=Stack([(root.id, False)]),
+            max_id=root.id,
             max_depth=self.max_depth,
             time_limit=self.time_limit,
             max_id_limit=self.max_id_limit,
@@ -405,8 +406,12 @@ class MCTS:
             if self.verbose: print(f"Node stid={node.id} is at the end of a path")
             return # terminal node
         if self.verbose: print(f"Expanding node {node}")
+        print("Children")
+        for k, v in self.children.items():
+            print(f"\t{k}")
         new_children, self.search_tree_max_id = node.find_children(self.search_tree_max_id)
         self.children[node] = new_children
+        # update to the nodes with the new children
         if self.verbose: print(f"Expanded node {node}\nwith children\n{self.children[node]}")
 
     def _simulate(self, path):
