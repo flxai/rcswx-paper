@@ -330,9 +330,9 @@ class Evolution:
         self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
         self.population.append(Individual(id=iteration, parent_id=None, root=root, accuracy=reward))
         print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
-        print(f"Architecture:")
-        for line in root.serialise():
-            print(line)
+        # print(f"Architecture:")
+        # for line in root.serialise():
+        #     print(line)
 
         # visualise the derivation tree
         visualise_derivation_tree(

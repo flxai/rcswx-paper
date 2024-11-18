@@ -3,6 +3,7 @@ import argparse
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run MCTS on a grammar.")
+    parser.add_argument("--config", type=str, default="configs/config.yaml", help="The config file to use.")
     parser.add_argument("--seed", type=int, default=0, help="The seed to use.")
     # search details
     parser.add_argument("--grammar", type=str, default="einspace", help="The grammar to use.")

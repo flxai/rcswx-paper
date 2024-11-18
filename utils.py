@@ -1,5 +1,22 @@
 from os.path import join
 from time import time
+import yaml
+
+
+def load_config(args):
+    # load yaml file and overwrite anything in it
+    with open(args.config, "r") as f:
+        config = yaml.load(f, Loader=yaml.Loader)
+        for key, value in config.items():
+            if value == "None":
+                config[key] = None
+    # convert to args
+    for key, value in config.items():
+        setattr(args, key, value)
+    # ensure device is set
+    if args.device is None:
+        raise ValueError("Please specify device")
+    return args
 
 
 def get_exp_path(args):

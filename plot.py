@@ -52,6 +52,12 @@ args = parse_arguments()
 # load results
 results = load_results(join(args.results_path, utils.get_exp_path(args)))
 
+# find best architecture
+best_arch, best_reward = max(results["rewards"], key=lambda x: x[1])
+
+# visualise it
+visualise_derivation_tree(best_arch[0], iteration="best", show=False, save_path=join(args.figures_path, utils.get_exp_path(args)))
+
 # plot results
 plot_results(args, results, "rewards", join(args.figures_path, utils.get_exp_path(args)))
 

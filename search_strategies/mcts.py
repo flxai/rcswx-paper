@@ -321,7 +321,7 @@ class MCTS:
                 self.visualise = True
 
             # do a single iteration of MCTS
-            end_node, path = self.do_rollout(self.search_tree_root)
+            end_node, path = self.do_rollout(self.search_tree_root, iteration)
 
             # save to results
             self.save_results(iteration)
@@ -362,23 +362,45 @@ class MCTS:
 
         return max(self.children[node], key=score)
 
-    def do_rollout(self, node):
-        "Make the tree one layer better. (Train for one iteration.)"
+    def do_rollout(self, node, iteration):
+        "Make the tree one layer bigger. (Train for one iteration.)"
+        global timer
+        timer = Timer()
+
+        # select the node to expand
         path = self._select(node)
         if self.verbose: print("Path", path)
+
+        # expand the node
         leaf = path[-1]
         self._expand(leaf)
+
+        # simulate the architecture
         if self.verbose: print("Simulating architecture")
         simulation_path = deepcopy(path)
-        final_leaf, reward = self._simulate(simulation_path)
+        root = self._simulate(simulation_path)
+        sample_duration = timer()
+
+        # evaluate the architecture
+        timer = Timer()
+        reward = self._reward(root)
+        eval_duration = timer()
         if self.verbose: print(f"Leaf node after simulate {leaf}")
         if self.verbose: print("Simulated architecture, with reward:", reward)
+
+        # backpropagate the reward
         self._backpropagate(path, reward)
         if self.verbose: print("Backpropagated reward")
-        serialised_architecture = final_leaf.get_root().serialise()
+
+        # save the rewards
+        serialised_architecture = root.serialise()
         self.rewards.append((serialised_architecture, reward))
-        # print(f"Reward: {reward}, Architecture: {serialised_architecture}")
-        return final_leaf, path
+        print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
+        # print(f"Architecture:")
+        # for line in serialised_architecture:
+        #     print(line)
+
+        return root, path
 
     def _select(self, node):
         "Find an unexplored descendant of `node`"
@@ -397,8 +419,6 @@ class MCTS:
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
-        global timer
-        timer = Timer()
         if node in self.children:
             return  # already expanded
         if self.is_terminal(node):
@@ -414,8 +434,7 @@ class MCTS:
         # keep track of time and stop if it exceeds the time limit
         operations = [node.node.operation for node in path if node.node.operation]
         root = self.sampler.sample_iterative(self.input_params, operations)
-        return root, self._reward(root)
-
+        return root
 
     def _backpropagate(self, path, reward):
         "Send the reward back up to the ancestors of the leaf"
@@ -441,7 +460,7 @@ class MCTS:
 
     def _reward(self, node):
         "Return the reward for the node"
-        reward = self.evaluation_fn(node.get_root(), verbose=self.verbose)
+        reward = self.evaluation_fn(node.get_root())
         return reward
 
     def is_terminal(self, node):

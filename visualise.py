@@ -214,6 +214,7 @@ def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="tw
     # assign the colours according to their score/visits on a scale of 0 to 9
     scores = nx.get_node_attributes(G, 'score').values()
     visits = nx.get_node_attributes(G, 'visits').values()
+    print(scores)
     colors = [
         palette[int((n_colors - 1) * score / (visit + 0.01))] if visit > 0 else "#cccccc"
         for score, visit in zip(scores, visits)

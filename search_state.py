@@ -127,8 +127,8 @@ class DerivationTreeNode:
 
     def remove_operation(self, operation):
         self.operation = None
-        print(f"Removed operation {operation.name} from node {self.id}")
-        print(f"Available operations: {self.available_rules['options']}")
+        # print(f"Removed operation {operation.name} from node {self.id}")
+        # print(f"Available operations: {self.available_rules['options']}")
         try:
             idx = self.available_rules["options"].index(operation)
         except ValueError:
@@ -171,16 +171,17 @@ class DerivationTreeNode:
     def limit_options(self, operation):
         if self.available_rules:
             # get index of the operation in the available rules
-            print(f"Node {self.id}: {self}")
-            print(f"Options {self.available_rules['options']}")
-            print(f"Options {[op.name for op in self.available_rules['options']]}")
-            print(f"Removed {operation.name}")
+            # print(f"Node {self.id}: {self}")
+            # print(f"Options {self.available_rules['options']}")
+            # print(f"Options {[op.name for op in self.available_rules['options']]}")
+            # print(f"Removed {operation.name}")
             op_names = [op.name for op in self.available_rules["options"]]
             idx = op_names.index(operation.name)
             self.available_rules["options"].pop(idx)
             self.available_rules["probs"].pop(idx)
         else:
-            print(f"Operation {operation.name} not in available rules")
+            pass
+            # print(f"Operation {operation.name} not in available rules")
         # print(f"Options left {[op.name for op in self.available_rules['options']]}")
 
     def copy(self):

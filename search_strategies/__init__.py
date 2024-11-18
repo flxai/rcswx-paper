@@ -1,11 +1,13 @@
 from os.path import join
 
 from .random_search import RandomSearch
+from .evolution import Evolution
 from .mcts import MCTS
 import utils
 
 __all__ = [
     "RandomSearch",
+    "Evolution",
     "MCTS",
 ]
 
@@ -14,6 +16,7 @@ def create_search_strategy(args, grammar, evaluation_fn, input_params):
     # create the search strategy
     search_strategy = {
         "random_search": RandomSearch,
+        "evolution": Evolution,
         "mcts": MCTS,
     }[args.search_strategy]
 

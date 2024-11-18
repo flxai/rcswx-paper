@@ -168,9 +168,9 @@ class RandomSearch:
             eval_duration = timer()
             self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
             print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
-            print(f"Architecture:")
-            for line in root.serialise():
-                print(line)
+            # print(f"Architecture:")
+            # for line in root.serialise():
+            #     print(line)
 
             # visualise the derivation tree
             visualise_derivation_tree(

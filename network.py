@@ -75,9 +75,10 @@ class Network(nn.Module):
                     nn.Linear(backbone_output_shape[1], output_shape),
                 )
         self.backbone_output_shape = backbone_output_shape
+        # print(f"Network")
+        # print(self)
 
     def forward(self, x):
-        # print(self.backbone)
         # print("input to stem", x.shape)
         out = self.stem(x)
         # print("input to backbone", out.shape)
