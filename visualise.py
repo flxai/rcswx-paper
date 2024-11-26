@@ -25,7 +25,7 @@ colours = {
 }
 
 
-def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, iteration=None, save_path=None, show=False):
+def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, iteration=None, save_path=None, score=None, show=False):
     def add_edges(graph, root, stack=None, current_node_id=None):
         if root is not None:
             op_name = root.operation.name if root.operation else ""
@@ -86,6 +86,8 @@ def visualise_derivation_tree(root, stack=None, current_node_id=None, scale=1, i
     fig = plt.figure(figsize=(8 * scale, 6 * scale))
     ax = fig.add_subplot(111)
     ax.set_title(f"Derivation Tree at iteration {iteration}")
+    if score is not None:
+        ax.set_title(f"Derivation Tree at iteration {iteration} with score {score:.2f}")
     nx.draw(
         G, pos, labels=labels, with_labels=True,
         node_size=(60 * scale) ** 2, node_color=colors, edgecolors=border_colors, linewidths=2,
@@ -214,7 +216,6 @@ def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="tw
     # assign the colours according to their score/visits on a scale of 0 to 9
     scores = nx.get_node_attributes(G, 'score').values()
     visits = nx.get_node_attributes(G, 'visits').values()
-    print(scores)
     colors = [
         palette[int((n_colors - 1) * score / (visit + 0.01))] if visit > 0 else "#cccccc"
         for score, visit in zip(scores, visits)

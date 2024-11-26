@@ -3,6 +3,8 @@ import sys
 import time
 import pickle
 
+import psutil
+
 from pcfg import OutOfOptionsError
 from rich import print
 from tqdm import tqdm
@@ -60,6 +62,7 @@ class DerivationTreeNode:
             parent=None,
             input_params={},
             depth=0,
+            limiter=None,
             operation=None,
         ):
         self.id = id
@@ -69,6 +72,7 @@ class DerivationTreeNode:
         self.input_params = input_params
         self.output_params = {}
         self.depth = depth
+        self.limiter = limiter
         self.operation = operation
         self.available_rules = None
 
@@ -91,7 +95,8 @@ class DerivationTreeNode:
                     id=max_id + i + 1,
                     level=child_level,
                     parent=self,
-                    depth=self.depth + 1
+                    depth=self.depth + 1,
+                    limiter=self.limiter,
                 )
                 self.add_child(child)
         # print(f"initialised node {self.id} with operation {self.operation}")
@@ -125,19 +130,6 @@ class DerivationTreeNode:
                 precursor = precursor.children[-1]
         return precursor
 
-    def remove_operation(self, operation):
-        self.operation = None
-        # print(f"Removed operation {operation.name} from node {self.id}")
-        # print(f"Available operations: {self.available_rules['options']}")
-        try:
-            idx = self.available_rules["options"].index(operation)
-        except ValueError:
-            raise OutOfOptionsError
-        self.available_rules["options"].pop(idx)
-        self.available_rules["probs"].pop(idx)
-        # if self.verbose: print(f"Removed operation {operation.name} from node {self.id}")
-        # if self.verbose: print(f"Available operations: {[op.name for op in self.available_rules['options']]}")
-
     def inherit_input_params(self):
         child_idx = self.parent.children.index(self)
         self.parent.operation.inherit[child_idx](self)
@@ -168,13 +160,20 @@ class DerivationTreeNode:
             nodes.extend(child.serialise())
         return nodes
 
+    def num_params(self):
+        root = self.get_root()
+        model = root.build(root)
+        return sum(p.numel() for p in model.parameters())
+
     def limit_options(self, operation):
         if self.available_rules:
             # get index of the operation in the available rules
+            # print("")
             # print(f"Node {self.id}: {self}")
             # print(f"Options {self.available_rules['options']}")
             # print(f"Options {[op.name for op in self.available_rules['options']]}")
             # print(f"Removed {operation.name}")
+            # print("")
             op_names = [op.name for op in self.available_rules["options"]]
             idx = op_names.index(operation.name)
             self.available_rules["options"].pop(idx)
@@ -184,6 +183,13 @@ class DerivationTreeNode:
             # print(f"Operation {operation.name} not in available rules")
         # print(f"Options left {[op.name for op in self.available_rules['options']]}")
 
+    def build(self, node):
+        # check memory first
+        if not self.limiter.check_memory():
+            raise MemoryError(f"Memory limit reached: {self.limiter.memory}")
+        # build the network
+        return self.operation.build(node)
+
     def copy(self):
         # own implementation of deepcopy
         node = DerivationTreeNode(
@@ -191,6 +197,7 @@ class DerivationTreeNode:
             level=self.level,
             input_params=deepcopy(self.input_params),
             depth=self.depth,
+            limiter=self.limiter,
             operation=self.operation.copy() if self.operation else None,
         )
         node.output_params = deepcopy(self.output_params)
@@ -212,6 +219,44 @@ class DerivationTreeNode:
             # f"size={round(self.__sizeof__() / 1e6, 2)} MB" \
             f")"
         )
+
+    def __str__(self):
+        # convert into a string representation
+        # that uses bracket notation to represent the tree
+
+        # determine types of brackets to use
+        if self.operation:
+            if "branching" in self.operation.name:
+                brackets = "{}"
+            elif "sequential" in self.operation.name:
+                brackets = "()"
+            elif "routing" in self.operation.name:
+                brackets = "[]"
+            elif "computation" in self.operation.name:
+                brackets = "<>"
+            else:
+                brackets = None
+
+            # Initialize the string representation
+            repr = f"{self.operation.name}"
+            if brackets:
+                repr += brackets[0]
+
+            # Append the string representation of each child
+            for child in self.children:
+                repr += f"{str(child)}, "
+
+            # Remove the trailing comma and space if there are children
+            if self.children:
+                repr = repr[:-2]
+
+            # Append the closing bracket
+            if brackets:
+                repr += brackets[1]
+        else:
+            repr = f"None"
+
+        return repr
 
     def __hash__(self):
         return hash(self.id)

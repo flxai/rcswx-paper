@@ -31,8 +31,8 @@ def give_back_default(node):
 # modules
 def build_sequential_module(node):
     return layers.SequentialModule(
-        first_fn=node.children[0].operation.build(node.children[0]),
-        second_fn=node.children[1].operation.build(node.children[1])
+        first_fn=node.children[0].build(node.children[0]),
+        second_fn=node.children[1].build(node.children[1])
     )
 
 def infer_sequential_module(node):
@@ -63,12 +63,12 @@ sequential_module = Operation(
 
 def build_branching_module_2(node):
     return layers.BranchingModule(
-        branching_fn=node.children[0].operation.build(node.children[0]),
+        branching_fn=node.children[0].build(node.children[0]),
         inner_fn=[
-            node.children[1].operation.build(node.children[1]),
-            node.children[2].operation.build(node.children[2]),
+            node.children[1].build(node.children[1]),
+            node.children[2].build(node.children[2]),
         ],
-        aggregation_fn=node.children[3].operation.build(node.children[3])
+        aggregation_fn=node.children[3].build(node.children[3])
     )
 
 def infer_branching_module_2(node):
@@ -105,11 +105,11 @@ branching_module_2 = Operation(
 
 def build_branching_module_4(node):
     return layers.BranchingModule(
-        branching_fn=node.children[0].operation.build(node.children[0]),
+        branching_fn=node.children[0].build(node.children[0]),
         inner_fn=[
-            node.children[1].operation.build(node.children[1]) for _ in range(node.children[1].input_params["branching_factor"])
+            node.children[1].build(node.children[1]) for _ in range(node.children[1].input_params["branching_factor"])
         ],
-        aggregation_fn=node.children[2].operation.build(node.children[2])
+        aggregation_fn=node.children[2].build(node.children[2])
     )
 
 def infer_branching_module_4(node):
@@ -143,11 +143,11 @@ branching_module_4 = Operation(
 
 def build_branching_module_8(node):
     return layers.BranchingModule(
-        branching_fn=node.children[0].operation.build(node.children[0]),
+        branching_fn=node.children[0].build(node.children[0]),
         inner_fn=[
-            node.children[1].operation.build(node.children[1]) for _ in range(node.children[1].input_params["branching_factor"])
+            node.children[1].build(node.children[1]) for _ in range(node.children[1].input_params["branching_factor"])
         ],
-        aggregation_fn=node.children[2].operation.build(node.children[2])
+        aggregation_fn=node.children[2].build(node.children[2])
     )
 
 def infer_branching_module_8(node):
@@ -181,9 +181,9 @@ branching_module_8 = Operation(
 
 def build_routing_module(node):
     return layers.RoutingModule(
-        prerouting_fn=node.children[0].operation.build(node.children[0]),
-        inner_fn=node.children[1].operation.build(node.children[1]),
-        postrouting_fn=node.children[2].operation.build(node.children[2])
+        prerouting_fn=node.children[0].build(node.children[0]),
+        inner_fn=node.children[1].build(node.children[1]),
+        postrouting_fn=node.children[2].build(node.children[2])
     )
 
 def infer_routing_module(node):
@@ -217,7 +217,7 @@ routing_module = Operation(
 
 def build_computation_module(node):
     return layers.ComputationModule(
-        computation_fn=node.children[0].operation.build(node.children[0])
+        computation_fn=node.children[0].build(node.children[0])
     )
 
 def infer_computation_module(node):

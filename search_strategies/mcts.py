@@ -7,19 +7,19 @@ https://gist.github.com/qpwo/c538c6f73727e254fdc7fab81024f6e1
 from collections import defaultdict
 from copy import deepcopy
 from os.path import join, exists
-from os import makedirs
+from os import makedirs, rename, remove
 import pickle
 from search_strategies.random_search import Sampler
 from pcfg import OutOfOptionsError
 from search_state import Stack, DerivationTreeNode
 from visualise import visualise_derivation_tree
 from visualise import visualise_search_tree_2 as visualise_search_tree
-from utils import Timer
+from plot import Plotter
 
 from rich import print
 import math, random
 from tqdm import tqdm
-from time import time
+from scipy.stats import norm
 
 ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
 
@@ -41,9 +41,10 @@ class SearchTreeNode:
             operation,
             stack,
             max_id,
-            max_depth,
             time_limit,
             max_id_limit,
+            depth_limit,
+            mem_limit,
             verbose=False,
             backtrack=True
         ):
@@ -53,13 +54,17 @@ class SearchTreeNode:
         self.operation = operation
         self.stack = stack
         self.max_id = max_id
-        self.max_depth = max_depth
         self.time_limit = time_limit
         self.max_id_limit = max_id_limit
+        self.depth_limit = depth_limit
+        self.mem_limit = mem_limit
         self.verbose = verbose
         self.backtrack = backtrack
 
     def step(self, node, visited, stack, max_id, operation=None):
+        """
+        Step through the search tree
+        """
         if self.verbose: print(f"Stepping node dtid={node.id}, visited={visited} with operation {node.operation}")
         if visited:
             # Propagate the output params to the parent
@@ -75,12 +80,6 @@ class SearchTreeNode:
                 # select operation and initialise the node, children etc.
                 operation = operation if operation else self.pcfg.sample(
                     node,
-                    limits={
-                        "max_depth": self.max_depth,
-                        "time_limit": self.time_limit,
-                        "max_id_limit": self.max_id_limit,
-                    },
-                    duration=timer(),
                     verbose=self.verbose
                 )
                 stack, max_id = node.initialise(operation, stack, max_id, id_stack=False)
@@ -117,12 +116,6 @@ class SearchTreeNode:
             node,
             options,
             probs,
-            limits={
-                "max_depth": self.max_depth,
-                "time_limit": self.time_limit,
-                "max_id_limit": self.max_id_limit,
-            },
-            duration=timer(),
             verbose=self.verbose
         )
         
@@ -159,9 +152,10 @@ class SearchTreeNode:
                 operation=child_node.operation,
                 stack=child_stack,
                 max_id=child_max_id,
-                max_depth=self.max_depth,
                 time_limit=self.time_limit,
                 max_id_limit=self.max_id_limit,
+                depth_limit=self.depth_limit,
+                mem_limit=self.mem_limit,
                 verbose=self.verbose,
                 backtrack=self.backtrack
             )
@@ -169,34 +163,6 @@ class SearchTreeNode:
             if self.verbose: print(f"Child node {child}\nwith parent {child.node.parent}")
             if self.verbose: print(f"Stack of child node {child.id}: {child.stack}")
         return children, search_tree_max_id + len(children)
-
-    def find_random_child(self, search_tree_max_id, operation=None):
-        "Random successor of this board state (for more efficient simulation)"
-        if self.verbose: print(f"Finding random child of node stid={self.id} with operation {self.operation}")
-        if self.verbose: print(f"Stack of node stid={self.id}: {self.stack}")
-        node, visited = self.stack.pop()
-        # find the available and filtered options for the current node
-        node, stack, max_id = self.step(node, visited, self.stack, self.max_id, operation=operation)
-        while not stack.is_empty() and stack.stack[-1][1]:
-            # while the last element in the stack is visited
-            # we want to pop it and go back to the parent
-            _node, visited = stack.pop()
-            _node, stack, max_id = self.step(_node, visited, stack, max_id)
-        child = SearchTreeNode(
-            search_tree_max_id + 1,
-            self.pcfg,
-            node,
-            node.operation,
-            stack,
-            max_id,
-            max_depth=self.max_depth,
-            time_limit=self.time_limit,
-            max_id_limit=self.max_id_limit,
-            verbose=self.verbose,
-            backtrack=self.backtrack
-        )
-        # if self.verbose: print(f"Child node {child}\nwith parent\n{child.node.parent}")
-        return child, search_tree_max_id + 1
 
     def __hash__(self):
         return hash(self.id)
@@ -217,43 +183,49 @@ class MCTS:
             self,
             evaluation_fn,
             pcfg,
+            limiter,
             input_params,
             seed=0,
             mode="iterative",
             backtrack=True,
-            max_id_limit=1000,
             time_limit=300,
-            max_depth=20,
+            max_id_limit=1000,
+            depth_limit=20,
+            mem_limit=4096,
             verbose=False,
-            verbose_after_iteration=None,
             visualise=False,
-            visualise_after_iteration=None,
             visualise_scale=0.5,
+            vis_interval=10,
             figures_path=None,
             results_path=None,
             continue_search=False,
             # mcts specific parameters
-            exploration_weight=1,
+            aquisition_fn="uct",
+            exploration_weight=1.0,
+            incubent_type="parent",
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
+        self.limiter = limiter
         self.input_params = input_params
         self.seed = seed
         self.mode = mode
         self.backtrack = backtrack
-        self.max_id_limit = max_id_limit
         self.time_limit = time_limit
-        self.max_depth = max_depth
+        self.max_id_limit = max_id_limit
+        self.depth_limit = depth_limit
+        self.mem_limit = mem_limit
         self.verbose = verbose
-        self.verbose_after_iteration = verbose_after_iteration
         self.visualise = visualise
-        self.visualise_after_iteration = visualise_after_iteration
         self.visualise_scale = visualise_scale
+        self.vis_interval = vis_interval
         self.figures_path = figures_path
         self.results_path = results_path
         self.continue_search = continue_search
         # mcts specific parameters
         self.exploration_weight = exploration_weight
+        self.aquisition_fn = aquisition_fn
+        self.incubent_type = incubent_type
 
         initial_derivation_tree_max_id = 1
         initial_search_tree_max_id = 1
@@ -262,9 +234,10 @@ class MCTS:
         self.sampler = Sampler(
             pcfg=self.pcfg,
             mode=self.mode,
-            max_depth=self.max_depth,
             time_limit=self.time_limit,
             max_id_limit=self.max_id_limit,
+            depth_limit=self.depth_limit,
+            mem_limit=self.mem_limit,
             verbose=self.verbose
         )
 
@@ -275,7 +248,12 @@ class MCTS:
         self.rewards = []
         self.iteration = 0
         self.search_tree_max_id = initial_search_tree_max_id
-        root = DerivationTreeNode(initial_derivation_tree_max_id, "network", input_params=self.input_params)
+        root = DerivationTreeNode(
+            initial_derivation_tree_max_id,
+            "network",
+            input_params=self.input_params,
+            limiter=self.pcfg.limiter,
+        )
         self.search_tree_root = SearchTreeNode(
             id=self.search_tree_max_id,
             pcfg=self.pcfg,
@@ -283,9 +261,10 @@ class MCTS:
             operation=None,
             stack=Stack([(root, False)]),
             max_id=1,
-            max_depth=self.max_depth,
             time_limit=self.time_limit,
             max_id_limit=self.max_id_limit,
+            depth_limit=self.depth_limit,
+            mem_limit=self.mem_limit,
             verbose=self.verbose,
             backtrack=self.backtrack
         ) # The root of the search tree
@@ -303,6 +282,9 @@ class MCTS:
             random.seed(seed)
 
     def learn(self, steps=10):
+        """
+        Run the Monte Carlo Tree Search algorithm for a number of steps
+        """
         print("-----------------------")
         print("Monte Carlo Tree Search")
         print(f"Steps: {steps}")
@@ -310,42 +292,19 @@ class MCTS:
 
         # expand the initial search tree from the root
         print("Initialising search tree: expanding children of root node")
+        # start a timer for the first expansion
+        self.limiter.timer.start()
         self._expand(self.search_tree_root)
 
         # iterate through the search tree, expanding and simulating
         for iteration in tqdm(range(self.iteration, steps), desc="MCTS", initial=self.iteration, total=steps):
-            # set the verbose and visualise flags
-            if iteration == self.verbose_after_iteration:
-                self.verbose = True
-            if iteration == self.visualise_after_iteration:
-                self.visualise = True
-
             # do a single iteration of MCTS
-            end_node, path = self.do_rollout(self.search_tree_root, iteration)
+            end_node, path, reward = self.do_rollout(self.search_tree_root, iteration)
 
             # save to results
             self.save_results(iteration)
 
-            # visualise the derivation and search trees
-            visualise_derivation_tree(
-                end_node.get_root(),
-                scale=self.visualise_scale,
-                iteration=iteration,
-                save_path=self.figures_path,
-                show=self.visualise,
-            )
-            if self.verbose: print("Path", path)
-            visualise_search_tree(
-                self.search_tree_root,
-                self.children,
-                self.Q,
-                self.N,
-                path=[(a.id, b.id) for a, b in zip(path[0:], path[1:])],
-                scale=self.visualise_scale,
-                iteration=iteration,
-                save_path=self.figures_path,
-                show=self.visualise,
-            )
+            self.plot(end_node, path, reward, iteration)
 
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
@@ -364,29 +323,37 @@ class MCTS:
 
     def do_rollout(self, node, iteration):
         "Make the tree one layer bigger. (Train for one iteration.)"
-        global timer
-        timer = Timer()
-
         # select the node to expand
         path = self._select(node)
         if self.verbose: print("Path", path)
 
         # expand the node
         leaf = path[-1]
+        # start timer
+        self.limiter.timer.start()
         self._expand(leaf)
 
-        # simulate the architecture
-        if self.verbose: print("Simulating architecture")
-        simulation_path = deepcopy(path)
-        root = self._simulate(simulation_path)
-        sample_duration = timer()
+        success = False
+        while not success:
+            try:
+                if self.verbose: print("Simulating architecture")
+                simulation_path = deepcopy(path)
+                # start timer
+                self.limiter.timer.start()
+                # simulate the architecture
+                root = self._simulate(simulation_path)
+                sample_duration = self.limiter.timer()
 
-        # evaluate the architecture
-        timer = Timer()
-        reward = self._reward(root)
-        eval_duration = timer()
-        if self.verbose: print(f"Leaf node after simulate {leaf}")
-        if self.verbose: print("Simulated architecture, with reward:", reward)
+                # start timer
+                self.limiter.timer.start()
+                # evaluate the architecture
+                reward = self._reward(root)
+                eval_duration = self.limiter.timer()
+                if self.verbose: print(f"Leaf node after simulate {leaf}")
+                if self.verbose: print("Simulated architecture, with reward:", reward)
+                success = True
+            except (RuntimeError, MemoryError):
+                print("GPU or RAM Memory error, trying again")
 
         # backpropagate the reward
         self._backpropagate(path, reward)
@@ -394,13 +361,13 @@ class MCTS:
 
         # save the rewards
         serialised_architecture = root.serialise()
-        self.rewards.append((serialised_architecture, reward))
-        print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
+        self.rewards.append((serialised_architecture, reward, sample_duration, eval_duration))
+        print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
         # print(f"Architecture:")
         # for line in serialised_architecture:
         #     print(line)
 
-        return root, path
+        return root, path, reward
 
     def _select(self, node):
         "Find an unexplored descendant of `node`"
@@ -415,7 +382,10 @@ class MCTS:
                 n = unexplored.pop()
                 path.append(n)
                 return path
-            node = self._uct_select(node)  # descend a layer deeper
+            if self.aquisition_fn == "uct":
+                node = self._uct_select(node)  # descend a layer deeper
+            elif self.aquisition_fn == "ei":
+                node = self._ei_select(node)  # descend a layer deeper
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
@@ -433,7 +403,7 @@ class MCTS:
         "Returns the reward for a random simulation (to completion) of `node`"
         # keep track of time and stop if it exceeds the time limit
         operations = [node.node.operation for node in path if node.node.operation]
-        root = self.sampler.sample_iterative(self.input_params, operations)
+        root = self.sampler.sample(self.input_params, operations)
         return root
 
     def _backpropagate(self, path, reward):
@@ -458,6 +428,32 @@ class MCTS:
 
         return max(self.children[node], key=uct)
 
+    def _ei_select(self, node):
+        "Select a child of node, based on Expected Improvement"
+
+        # All children of node should already be expanded:
+        assert all(n in self.children for n in self.children[node])
+
+        log_N_vertex = math.log(self.N[node])
+
+        if self.incubent_type == "global": # highest avg reward of all nodes
+            idx = max(self.Q, key=self.Q.get)
+            y_star = self.Q[idx] / self.N[idx]
+        elif self.incubent_type == "parent": # same as avg of children
+            y_star = self.Q[node] / self.N[node]
+        elif self.incubent_type == "children":
+            y_star = max(self.Q[n] / self.N[n] for n in self.children[node])
+
+        h = lambda z, mu, sigma: norm.pdf(z, loc=0, scale=1) + z * norm.cdf(z, loc=0, scale=1)
+
+        def ei(n):
+            "Expected Improvement for trees"
+            mu = self.Q[n] / self.N[n]
+            sigma = math.sqrt(log_N_vertex / self.N[n])
+            return sigma * h((mu - y_star) / sigma, mu, sigma)
+
+        return max(self.children[node], key=ei)
+
     def _reward(self, node):
         "Return the reward for the node"
         reward = self.evaluation_fn(node.get_root())
@@ -466,20 +462,66 @@ class MCTS:
     def is_terminal(self, node):
         return node.stack.is_empty()
 
+    def plot(self, root, path, reward, iteration):
+        # visualise the derivation and search trees
+        visualise_derivation_tree(
+            root.get_root(),
+            scale=self.visualise_scale,
+            iteration=iteration,
+            save_path=self.figures_path,
+            score=reward,
+            show=self.visualise,
+        )
+        if self.verbose: print("Path", path)
+        visualise_search_tree(
+            self.search_tree_root,
+            self.children,
+            self.Q,
+            self.N,
+            path=[(a.id, b.id) for a, b in zip(path[0:], path[1:])],
+            scale=self.visualise_scale,
+            iteration=iteration,
+            save_path=self.figures_path,
+            show=self.visualise,
+        )
+        if iteration % self.vis_interval == 0:
+            plotter = Plotter({"rewards": self.rewards})
+            # find best architecture
+            idx, best_arch, best_reward = plotter.find_best_architecture()
+            # visualise it
+            visualise_derivation_tree(
+                best_arch[0], iteration=f"best_{idx}", score=best_reward, show=False,
+                save_path=self.figures_path
+            )
+            # plot results
+            plotter.plot_results("rewards", self.figures_path)
+            # plot number of parameters
+            plotter.plot_num_params(self.figures_path)
+            # plot number of nodes
+            plotter.plot_num_nodes(self.figures_path)
+
     def save_results(self, iteration):
         if self.results_path:
             makedirs(self.results_path, exist_ok=True)
-            with open(join(self.results_path, f"search_results.pkl"), "wb") as f:
-                pickle.dump({
-                    "rewards": self.rewards,
-                    "Q": self.Q,
-                    "N": self.N,
-                    "children": self.children,
-                    "iteration": iteration,
-                    "search_tree_max_id": self.search_tree_max_id,
-                    "search_tree_root": self.search_tree_root,
-                    "rng_state": random.getstate(),
-                }, f)
+            temp_path = join(self.results_path, f"search_results_temp.pkl")
+            final_path = join(self.results_path, f"search_results.pkl")
+            try:
+                with open(temp_path, "wb") as f:
+                    pickle.dump({
+                        "rewards": self.rewards,
+                        "Q": self.Q,
+                        "N": self.N,
+                        "children": self.children,
+                        "iteration": iteration,
+                        "search_tree_max_id": self.search_tree_max_id,
+                        "search_tree_root": self.search_tree_root,
+                        "rng_state": random.getstate(),
+                    }, f)
+                rename(temp_path, final_path)
+            except KeyboardInterrupt:
+                print("Saving interrupted. Partial results saved.")
+                if exists(temp_path):
+                    remove(temp_path)
 
     def load_results(self):
         # load the search results

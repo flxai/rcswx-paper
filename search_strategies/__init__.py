@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 
-def create_search_strategy(args, grammar, evaluation_fn, input_params):
+def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
     # create the search strategy
     search_strategy = {
         "random_search": RandomSearch,
@@ -41,27 +41,30 @@ def create_search_strategy(args, grammar, evaluation_fn, input_params):
                 args.results_path,
                 utils.get_exp_path(args),
             ),
+            "aquisition_fn": args.aquisition_fn,
             "exploration_weight": args.exploration_weight,
+            "incubent_type": args.incubent_type,
         }
     }
 
     # create the search
     search = search_strategy(
         # common parameters
-        pcfg=grammar,
         evaluation_fn=evaluation_fn,
+        pcfg=grammar,
+        limiter=limiter,
         input_params=input_params,
         seed=args.seed,
         mode=args.mode,
         backtrack=args.backtrack,
         max_id_limit=args.max_id_limit,
         time_limit=args.time_limit,
-        max_depth=args.max_depth,
+        depth_limit=args.depth_limit,
+        mem_limit=args.mem_limit,
         verbose=args.verbose_search,
-        verbose_after_iteration=args.print_after,
         visualise=args.visualise,
-        visualise_after_iteration=args.print_after,
         visualise_scale=args.visualise_scale,
+        vis_interval=args.vis_interval,
         continue_search=args.continue_search,
         # specific parameters
         **search_specific_params[args.search_strategy],

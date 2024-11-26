@@ -1,17 +1,14 @@
 from collections import deque
 from os.path import join, exists
-from os import makedirs
+from os import makedirs, rename, remove
 import pickle
-import time
 import random
 
 from tqdm import tqdm
 
 from search_strategies.random_search import Sampler
 from visualise import visualise_derivation_tree
-from search_state import DerivationTreeNode, Stack
-from pcfg import OutOfOptionsError
-from utils import Timer
+from plot import Plotter
 
 
 class Individual(object):
@@ -118,19 +115,21 @@ class Evolver(Sampler):
         selection_strategy="tournament",
         tournament_size=10,
         elitism=True,
-        pcfg,
-        mode,
-        max_depth=20,
+        pcfg=None,
+        mode="iterative",
         time_limit=300,
         max_id_limit=1000,
+        depth_limit=20,
+        mem_limit=4096,
         verbose=False,
     ):
         super().__init__(
             pcfg=pcfg,
             mode=mode,
-            max_depth=max_depth,
             time_limit=time_limit,
             max_id_limit=max_id_limit,
+            depth_limit=depth_limit,
+            mem_limit=mem_limit,
             verbose=verbose
         )
         self.mutation_strategy = mutation_strategy
@@ -216,18 +215,19 @@ class Evolution:
             self,
             evaluation_fn,
             pcfg,
+            limiter,
             input_params,
             seed=0,
             mode="iterative",
             backtrack=True,
-            max_id_limit=1000,
             time_limit=300,
-            max_depth=20,
+            max_id_limit=1000,
+            depth_limit=20,
+            mem_limit=4096,
             verbose=False,
-            verbose_after_iteration=None,
             visualise=False,
-            visualise_after_iteration=None,
             visualise_scale=0.5,
+            vis_interval=10,
             figures_path=None,
             results_path=None,
             continue_search=False,
@@ -244,18 +244,19 @@ class Evolution:
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
+        self.limiter = limiter
         self.input_params = input_params
         self.seed = seed
         self.mode = mode
         self.backtrack = backtrack
-        self.max_id_limit = max_id_limit
         self.time_limit = time_limit
-        self.max_depth = max_depth
+        self.max_id_limit = max_id_limit
+        self.depth_limit = depth_limit
+        self.mem_limit = mem_limit
         self.verbose = verbose
-        self.verbose_after_iteration = verbose_after_iteration
         self.visualise = visualise
-        self.visualise_after_iteration = visualise_after_iteration
         self.visualise_scale = visualise_scale
+        self.vis_interval = vis_interval
         self.figures_path = figures_path
         self.results_path = results_path
         self.continue_search = continue_search
@@ -266,9 +267,10 @@ class Evolution:
         self.sampler = Sampler(
             pcfg=self.pcfg,
             mode=self.mode,
-            max_depth=self.max_depth,
             time_limit=self.time_limit,
             max_id_limit=self.max_id_limit,
+            depth_limit=self.depth_limit,
+            mem_limit=self.mem_limit,
             verbose=self.verbose
         )
 
@@ -311,53 +313,85 @@ class Evolution:
             self.step(i, "evolve")
 
     def step(self, iteration, mode):
-        global timer
+        success = False
+        while not success:
+            try:
+                # start timer
+                self.limiter.timer.start()
+                # sample a new individual
+                if mode == "sample":
+                    root = self.sampler(self.input_params)
+                elif mode == "evolve":
+                    root = self.evolver(self.population)
+                sample_duration = self.limiter.timer()
 
-        # sample a new individual
-        timer = Timer()
-        if mode == "sample":
-            root = self.sampler(self.input_params)
-        elif mode == "evolve":
-            root = self.evolver(self.population)
-        sample_duration = timer()
+                # start timer
+                self.limiter.timer.start()
+                # evaluate the network
+                reward = self.evaluation_fn(root)
+                eval_duration = self.limiter.timer()
 
-        # evaluate the network
-        timer = Timer()
-        reward = self.evaluation_fn(root)
-        eval_duration = timer()
+                success = True
+            except (RuntimeError, MemoryError):
+                print("GPU or RAM Memory error, trying again")
 
         # add the new individual to the population
         self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
         self.population.append(Individual(id=iteration, parent_id=None, root=root, accuracy=reward))
-        print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
+        print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
         # print(f"Architecture:")
         # for line in root.serialise():
         #     print(line)
 
+        # save the results
+        self.save_results(iteration)
+
+        self.plot(root, reward, iteration)
+
+    def plot(self, root, reward, iteration):
         # visualise the derivation tree
         visualise_derivation_tree(
             root,
             scale=self.visualise_scale,
             iteration=iteration,
             save_path=self.figures_path,
+            score=reward,
             show=self.visualise,
         )
-
-        # save the results
-        self.save_results(iteration)
-
-        timer.stop()
+        if iteration % self.vis_interval == 0:
+            plotter = Plotter({"rewards": self.rewards})
+            # find best architecture
+            idx, best_arch, best_reward = plotter.find_best_architecture()
+            # visualise it
+            visualise_derivation_tree(
+                best_arch[0], iteration=f"best_{idx}", score=best_reward, show=False,
+                save_path=self.figures_path
+            )
+            # plot results
+            plotter.plot_results("rewards", self.figures_path)
+            # plot number of parameters
+            plotter.plot_num_params(self.figures_path)
+            # plot number of nodes
+            plotter.plot_num_nodes(self.figures_path)
 
     def save_results(self, iteration):
         if self.results_path:
             makedirs(self.results_path, exist_ok=True)
-            with open(join(self.results_path, f"search_results.pkl"), "wb") as f:
-                pickle.dump({
-                    "rewards": self.rewards,
-                    "iteration": iteration,
-                    "population": self.population,
-                    "rng_state": random.getstate(),
-                }, f)
+            temp_path = join(self.results_path, f"search_results_temp.pkl")
+            final_path = join(self.results_path, f"search_results.pkl")
+            try:
+                with open(temp_path, "wb") as f:
+                    pickle.dump({
+                        "rewards": self.rewards,
+                        "iteration": iteration,
+                        "population": self.population,
+                        "rng_state": random.getstate(),
+                    }, f)
+                rename(temp_path, final_path)
+            except KeyboardInterrupt:
+                print("Saving interrupted. Partial results saved.")
+                if exists(temp_path):
+                    remove(temp_path)
 
     def load_results(self):
         # load the search results

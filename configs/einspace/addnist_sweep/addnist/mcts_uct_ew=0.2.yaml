@@ -3,22 +3,24 @@ seed: 0
 # search details
 search_space: "einspace"
 search_strategy: "mcts"
-steps: 10000
-exploration_weight: 1.0
+steps: 1000
 backtrack: true
 mode: "iterative"
 time_limit: 300
-max_id_limit: 1000
-max_depth: 20
+max_id_limit: 10000
+depth_limit: 20
+mem_limit: 4096
+aquisition_fn: "uct"
+exploration_weight: 0.2
 
 # evaluation details
-dataset: "language"
+dataset: "addnist"
 load_in_gpu: True
-num_classes: 10
-channels: 1
+num_classes: 20
+channels: 3
 image_size:
-  - 24
-  - 24
+  - 28
+  - 28
 input_mode: "im"
 
 # training details

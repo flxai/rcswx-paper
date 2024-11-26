@@ -1,35 +1,56 @@
 from os.path import join, exists
-from os import makedirs
+from os import makedirs, rename, remove
 import pickle
-import time
 import random
 
 from tqdm import tqdm
 
-from utils import Timer
 from visualise import visualise_derivation_tree
 from search_state import DerivationTreeNode, Stack
 from pcfg import OutOfOptionsError
+from plot import Plotter
 
 
 class Sampler:
-    def __init__(self, pcfg, mode, max_depth=20, time_limit=300, max_id_limit=1000, verbose=False):
+    def __init__(
+            self,
+            pcfg,
+            mode,
+            time_limit=300,
+            max_id_limit=1000,
+            depth_limit=20,
+            mem_limit=4096,
+            verbose=False
+        ):
         self.pcfg = pcfg
         self.mode = mode
-        self.max_depth = max_depth
         self.time_limit = time_limit
         self.max_id_limit = max_id_limit
+        self.depth_limit = depth_limit
+        self.mem_limit = mem_limit
         self.verbose = verbose
-
-        self.nodes = {}
 
         if self.mode == "iterative":
             self.__call__ = self.sample_iterative
         elif self.mode == "recursive":
             raise NotImplementedError("Recursive mode not implemented")
 
-    def sample_iterative(self, input_params, operations=None, timer=Timer()):
-        root = DerivationTreeNode(id=1, level="network", input_params=input_params)
+    def sample(self, input_params, operations=None):
+        # catch RuntimeErrors and MemoryErrors and try again
+        try:
+            return self.__call__(input_params, operations)
+        except (RuntimeError, MemoryError) as e:
+            print(f"Error: {e}")
+            print("Trying again...")
+            return self.sample(input_params, operations)
+
+    def sample_iterative(self, input_params, operations=None):
+        root = DerivationTreeNode(
+            id=1,
+            level="network",
+            input_params=input_params,
+            limiter=self.pcfg.limiter,
+        )
         self.nodes = {root.id: root}
 
         max_id = root.id
@@ -61,12 +82,6 @@ class Sampler:
                     # select operation and initialise the node, children etc.
                     operation = operations.pop(0) if operations else self.pcfg.sample(
                         node,
-                        limits={
-                            "max_depth": self.max_depth,
-                            "time_limit": self.time_limit,
-                            "max_id_limit": self.max_id_limit,
-                        },
-                        duration=timer(),
                         verbose=self.verbose,
                     )
                     stack, max_id = node.initialise(
@@ -84,7 +99,6 @@ class Sampler:
                     stack, _ = node.memory
                     stack.restore(stack, node)
                     if self.verbose: print(f"Backtracked to node {node.id}")
-        self.nodes = {}
         return root
 
 
@@ -93,36 +107,38 @@ class RandomSearch:
             self,
             evaluation_fn,
             pcfg,
+            limiter,
             input_params,
             seed=0,
             mode="iterative",
             backtrack=True,
-            max_id_limit=1000,
             time_limit=300,
-            max_depth=20,
+            max_id_limit=1000,
+            depth_limit=20,
+            mem_limit=4096,
             verbose=False,
-            verbose_after_iteration=None,
             visualise=False,
-            visualise_after_iteration=None,
             visualise_scale=0.5,
+            vis_interval=10,
             figures_path=None,
             results_path=None,
             continue_search=False,
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
+        self.limiter = limiter
         self.input_params = input_params
         self.seed = seed
         self.mode = mode
         self.backtrack = backtrack
-        self.max_id_limit = max_id_limit
         self.time_limit = time_limit
-        self.max_depth = max_depth
+        self.max_id_limit = max_id_limit
+        self.depth_limit = depth_limit
+        self.mem_limit = mem_limit
         self.verbose = verbose
-        self.verbose_after_iteration = verbose_after_iteration
         self.visualise = visualise
-        self.visualise_after_iteration = visualise_after_iteration
         self.visualise_scale = visualise_scale
+        self.vis_interval = vis_interval
         self.figures_path = figures_path
         self.results_path = results_path
         self.continue_search = continue_search
@@ -130,9 +146,10 @@ class RandomSearch:
         self.sampler = Sampler(
             pcfg=self.pcfg,
             mode=self.mode,
-            max_depth=self.max_depth,
             time_limit=self.time_limit,
             max_id_limit=self.max_id_limit,
+            depth_limit=self.depth_limit,
+            mem_limit=self.mem_limit,
             verbose=self.verbose
         )
 
@@ -157,44 +174,79 @@ class RandomSearch:
         print("--------------")
 
         for iteration in tqdm(range(self.iteration, steps), desc="RS", initial=self.iteration, total=steps):
-            global timer
-            timer = Timer()
-            root = self.sampler(self.input_params)
-            sample_duration = timer()
+            success = False
+            while not success:
+                try:
+                    # start timer
+                    self.limiter.timer.start()
+                    # sample the network
+                    root = self.sampler.sample(self.input_params)
+                    sample_duration = self.limiter.timer()
 
-            # evaluate the network
-            timer = Timer()
-            reward = self.evaluation_fn(root)
-            eval_duration = timer()
+                    # start timer
+                    self.limiter.timer.start()
+                    # evaluate the network
+                    reward = self.evaluation_fn(root)
+                    eval_duration = self.limiter.timer()
+
+                    success = True
+                except (RuntimeError, MemoryError):
+                    print("GPU or RAM Memory error, trying again")
+
             self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
-            print(f"Iteration {iteration}, reward: {reward}, sample duration: {sample_duration}, eval duration: {eval_duration}")
+            print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
             # print(f"Architecture:")
             # for line in root.serialise():
             #     print(line)
 
-            # visualise the derivation tree
-            visualise_derivation_tree(
-                root,
-                scale=self.visualise_scale,
-                iteration=iteration,
-                save_path=self.figures_path,
-                show=self.visualise,
-            )
+            self.plot(root, reward, iteration)
 
             # save the results
             self.save_results(iteration)
 
-            timer.stop()
+    def plot(self, root, reward, iteration):
+        # visualise the derivation tree
+        visualise_derivation_tree(
+            root,
+            scale=self.visualise_scale,
+            iteration=iteration,
+            save_path=self.figures_path,
+            score=reward,
+            show=self.visualise,
+        )
+        if iteration % self.vis_interval == 0:
+            plotter = Plotter({"rewards": self.rewards})
+            # find best architecture
+            idx, best_arch, best_reward = plotter.find_best_architecture()
+            # visualise it
+            visualise_derivation_tree(
+                best_arch[0], iteration=f"best_{idx}", score=best_reward, show=False,
+                save_path=self.figures_path
+            )
+            # plot results
+            plotter.plot_results("rewards", self.figures_path)
+            # plot number of parameters
+            plotter.plot_num_params(self.figures_path)
+            # plot number of nodes
+            plotter.plot_num_nodes(self.figures_path)
 
     def save_results(self, iteration):
         if self.results_path:
             makedirs(self.results_path, exist_ok=True)
-            with open(join(self.results_path, f"search_results.pkl"), "wb") as f:
-                pickle.dump({
-                    "rewards": self.rewards,
-                    "iteration": iteration,
-                    "rng_state": random.getstate(),
-                }, f)
+            temp_path = join(self.results_path, f"search_results_temp.pkl")
+            final_path = join(self.results_path, f"search_results.pkl")
+            try:
+                with open(temp_path, "wb") as f:
+                    pickle.dump({
+                        "rewards": self.rewards,
+                        "iteration": iteration,
+                        "rng_state": random.getstate(),
+                    }, f)
+                rename(temp_path, final_path)
+            except KeyboardInterrupt:
+                print("Saving interrupted. Partial results saved.")
+                if exists(temp_path):
+                    remove(temp_path)
 
     def load_results(self):
         # load the search results
