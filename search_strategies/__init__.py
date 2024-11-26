@@ -44,6 +44,25 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             "aquisition_fn": args.aquisition_fn,
             "exploration_weight": args.exploration_weight,
             "incubent_type": args.incubent_type,
+        },
+        "evolution": {
+            "figures_path": join(
+                args.figures_path,
+                utils.get_exp_path(args),
+            ),
+            "results_path": join(
+                args.results_path,
+                utils.get_exp_path(args),
+            ),
+            "regularised": args.regularised,
+            "population_size": args.population_size,
+            "mutation_strategy": args.mutation_strategy,
+            "mutation_rate": args.mutation_rate,
+            "crossover_strategy": args.crossover_strategy,
+            "crossover_rate": args.crossover_rate,
+            "selection_strategy": args.selection_strategy,
+            "tournament_size": args.tournament_size,
+            "elitism": args.elitism,
         }
     }
 

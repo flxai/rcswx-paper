@@ -32,7 +32,7 @@ class Network(nn.Module):
         super(Network, self).__init__()
         self.config = config
         self.backbone = backbone
-        if self.config["search_space"] == "einspace":
+        if "einspace" in self.config["search_space"]:
             self.stem = nn.Sequential(
                 # conv stem to even number of channels?
                 # positional embedding?

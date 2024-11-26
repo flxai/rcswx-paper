@@ -35,22 +35,23 @@ class Sampler:
         elif self.mode == "recursive":
             raise NotImplementedError("Recursive mode not implemented")
 
-    def sample(self, input_params, operations=None):
+    def sample(self, input_params, operations=None, root=None):
         # catch RuntimeErrors and MemoryErrors and try again
         try:
-            return self.__call__(input_params, operations)
+            return self.__call__(input_params, operations, root)
         except (RuntimeError, MemoryError) as e:
             print(f"Error: {e}")
             print("Trying again...")
             return self.sample(input_params, operations)
 
-    def sample_iterative(self, input_params, operations=None):
-        root = DerivationTreeNode(
-            id=1,
-            level="network",
-            input_params=input_params,
-            limiter=self.pcfg.limiter,
-        )
+    def sample_iterative(self, input_params, operations=None, root=None):
+        if root is None:
+            root = DerivationTreeNode(
+                id=1,
+                level="network",
+                input_params=input_params,
+                limiter=self.pcfg.limiter,
+            )
         self.nodes = {root.id: root}
 
         max_id = root.id
@@ -217,6 +218,13 @@ class RandomSearch:
         if iteration % self.vis_interval == 0:
             plotter = Plotter({"rewards": self.rewards})
             # find best architecture
+            print("Finding best architecture")
+            # print all rewards from self.rewards
+            for i, result in enumerate(self.rewards):
+                arch, reward, _, _ = result
+                print(f"Reward {i}: {reward}")
+            # print best reward
+            print(f"Best reward: {max(self.rewards, key=lambda x: x[1])[1]}")
             idx, best_arch, best_reward = plotter.find_best_architecture()
             # visualise it
             visualise_derivation_tree(

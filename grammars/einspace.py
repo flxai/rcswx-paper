@@ -1,8 +1,9 @@
+import math
+
 import torch
 import torch.nn as nn
 
 from search_state import Operation
-
 import layers
 
 
@@ -587,6 +588,7 @@ def infer_linear(dim, node):
         "other_mode": node.input_params["other_mode"],
         "branching_factor": node.input_params["branching_factor"],
         "last_im_shape": node.input_params["last_im_shape"],
+        "num_params": node.input_params["shape"][-1] * dim + dim,
     }
 
 def valid_linear(node):
@@ -608,7 +610,9 @@ def build_norm(node):
     return layers.EinNorm(node.input_params["shape"])
 
 def infer_norm(node):
-    return node.input_params
+    output_params = node.input_params
+    output_params.update({"num_params": 2 * node.input_params["shape"][1]})
+    return output_params
 
 def valid_norm(node):
     return True
@@ -668,7 +672,9 @@ def build_positional_encoding(node):
     return layers.LearnablePositionalEncoding(node.input_params["shape"])
 
 def infer_positional_encoding(node):
-    return node.input_params
+    output_params = node.input_params
+    output_params.update({"num_params": math.prod(node.input_params["shape"][1:])})
+    return output_params
 
 def valid_positional_encoding(node):
     return True

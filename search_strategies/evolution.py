@@ -36,6 +36,9 @@ class Individual(object):
         """Prints a readable version of this bitstring."""
         return f"Individual(id={self.id}, accuracy={self.accuracy}, age={self.age}"
 
+    def __eq__(self, other):
+        return self.id == other.id
+
 
 class Population(deque):
     """A class representing a population of models."""
@@ -108,19 +111,19 @@ class Population(deque):
 class Evolver(Sampler):
     def __init__(
         self,
-        mutation_strategy="random",
-        mutation_rate=0.1,
-        crossover_strategy="one_point",
-        crossover_rate=0.5,
-        selection_strategy="tournament",
-        tournament_size=10,
-        elitism=True,
         pcfg=None,
         mode="iterative",
         time_limit=300,
         max_id_limit=1000,
         depth_limit=20,
         mem_limit=4096,
+        mutation_strategy="random",
+        mutation_rate=1.0,
+        crossover_strategy="two_point",
+        crossover_rate=0.5,
+        selection_strategy="tournament",
+        tournament_size=10,
+        elitism=True,
         verbose=False,
     ):
         super().__init__(
@@ -140,15 +143,21 @@ class Evolver(Sampler):
         self.tournament_size = tournament_size
         self.elitism = elitism
 
-    def __call__(self, population):
+    def evolve(self, population):
         # select the parents
-        parent1 = self.select(population)
-        parent2 = self.select(population)
+        # parent1 = self.select(population)
+        # parent2 = self.select(population)
         # crossover the parents
-        child = self.crossover(parent1, parent2)
+        # child = self.crossover(parent1, parent2)
         # mutate the child
-        child = self.mutate(child)
-        return child
+        # child = self.mutate(child)
+        # return child
+
+        # select the individual to mutate
+        individual = self.select(population)
+        # mutate the individual
+        child = self.mutate(individual)
+        return child.root
 
     def select(self, population):
         if self.selection_strategy == "tournament":
@@ -184,30 +193,57 @@ class Evolver(Sampler):
 
     def mutate(self, individual):
         if random.random() < self.mutation_rate:
-            if self.mutantion_strategy == "random":
+            if self.mutation_strategy == "random":
                 return self.random_mutation(individual)
         return individual
 
     def random_mutation(self, individual):
+        print(f"Mutating architecture:")
+        print(f"{individual.root}")
         # choose a random node to mutate
         node = random.choice(individual.root.serialise())
+        print(f"Mutating node:")
+        print(f"{node}")
         # mutate the node
         success = False
         while not success:
             try:
-                root = self.mutate_node(node)
+                root = self.mutate_node(individual.root, node)
                 individual.root = root
                 success = True
             except Exception as e:
                 print("MutationError:", e)
         return individual
 
-    def mutate_node(self, node):
+    def mutate_node(self, root, node):
+        if node.is_leaf():
+            # remove the current option from the available options of this node
+            node.limit_options(node.operation)
         # sample a new subtree rooted at this node
-        new_node = self.__call__(node) # run sampler
+        new_node = self.sample(input_params=node.input_params, root=node)
+        print(f"New subtree:")
+        print(f"{new_node}")
+        # replace the old node with the new subtree
+        node.replace(new_node)
+        print(f"Mutated architecture:")
+        print(f"{root}")
         # test to see if the new architecture is valid
-        new_node.get_root().validate() # raises an exception if the architecture is invalid
-        return new_node.get_root()
+        # this will run through the entire network with the existing operations
+        # and raise an error if the network is invalid
+        print(f"Testing mutated architecture:")
+        print(f"Inputs to sample: {root.input_params}, root: {root}, operations: {[node.operation for node in root.serialise()]}")
+        self.sample(
+            input_params=root.input_params,
+            root=root,
+            operations=[
+                node.operation
+                for node in root.serialise()
+            ]
+        )
+        print(f"Mutation successful")
+        print(f"New architecture:")
+        print(f"{root}")
+        return root
 
 
 class Evolution:
@@ -234,9 +270,9 @@ class Evolution:
             # evolution specific parameters
             regularised=True, # use regularised evolution
             population_size=100, # number of individuals in the population
-            mutation_strategy="random", # "random" or "gaussian"
-            mutation_rate=0.1, # probability of mutation
-            crossover_strategy="one_point", # "one_point" or "two_point"
+            mutation_strategy="random", # "random"
+            mutation_rate=1.0, # probability of mutation
+            crossover_strategy="two_point", # "one_point" or "two_point"
             crossover_rate=0.5, # probability of crossover
             selection_strategy="tournament", # "tournament" or "roulette"
             tournament_size=10, # only used if selection_strategy is "tournament"
@@ -264,17 +300,13 @@ class Evolution:
         self.regularised = regularised
         self.population_size = population_size
 
-        self.sampler = Sampler(
-            pcfg=self.pcfg,
-            mode=self.mode,
-            time_limit=self.time_limit,
-            max_id_limit=self.max_id_limit,
-            depth_limit=self.depth_limit,
-            mem_limit=self.mem_limit,
-            verbose=self.verbose
-        )
-
         self.evolver = Evolver(
+            pcfg=pcfg,
+            mode=mode,
+            time_limit=time_limit,
+            max_id_limit=max_id_limit,
+            depth_limit=depth_limit,
+            mem_limit=mem_limit,
             mutation_strategy=mutation_strategy,
             mutation_rate=mutation_rate,
             crossover_strategy=crossover_strategy,
@@ -282,11 +314,12 @@ class Evolution:
             selection_strategy=selection_strategy,
             tournament_size=tournament_size,
             elitism=elitism,
+            verbose=verbose,
         )
 
         self.rewards = []
         self.iteration = 0
-        self.population = []
+        self.population = Population([])
 
         self.set_rng_state(seed=self.seed)
 
@@ -306,11 +339,14 @@ class Evolution:
         print("--------------")
 
         # populate the first generation
-        for i in tqdm(range(len(self.population), self.population_size), desc="Initialising population"):
-            self.step(i, "sample")
+        for iteration in tqdm(range(self.iteration, self.population_size), desc="Initialising population", initial=self.iteration, total=self.population_size):
+            self.step(iteration, "sample")
 
-        for i in tqdm(range(len(self.population), self.population_size), desc="Initialising population"):
-            self.step(i, "evolve")
+        if self.iteration < self.population_size:
+            self.iteration = self.population_size
+
+        for iteration in tqdm(range(self.iteration, steps), desc="Evolving population", initial=self.iteration, total=steps):
+            self.step(iteration, "evolve")
 
     def step(self, iteration, mode):
         success = False
@@ -320,9 +356,9 @@ class Evolution:
                 self.limiter.timer.start()
                 # sample a new individual
                 if mode == "sample":
-                    root = self.sampler(self.input_params)
+                    root = self.evolver.sample(self.input_params)
                 elif mode == "evolve":
-                    root = self.evolver(self.population)
+                    root = self.evolver.evolve(self.population)
                 sample_duration = self.limiter.timer()
 
                 # start timer
@@ -384,7 +420,7 @@ class Evolution:
                     pickle.dump({
                         "rewards": self.rewards,
                         "iteration": iteration,
-                        "population": self.population,
+                        "population": self.population.tolist(),
                         "rng_state": random.getstate(),
                     }, f)
                 rename(temp_path, final_path)
@@ -401,7 +437,7 @@ class Evolution:
                 data = pickle.load(f)
                 self.rewards = data["rewards"]
                 self.iteration = data["iteration"] + 1
-                self.population = data["population"]
+                self.population = Population(data["population"])
                 # set the random seed
                 self.set_rng_state(state=data["rng_state"])
                 print(f"Continuing search from iteration {self.iteration}")

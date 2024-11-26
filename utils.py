@@ -22,7 +22,7 @@ def load_config(args):
 
 def get_exp_path(args):
     exp_path = join(
-        args.grammar,
+        args.search_space,
         args.dataset,
         args.search_strategy,
         f"seed={args.seed}",

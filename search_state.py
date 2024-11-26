@@ -162,8 +162,16 @@ class DerivationTreeNode:
 
     def num_params(self):
         root = self.get_root()
-        model = root.build(root)
-        return sum(p.numel() for p in model.parameters())
+        def count_params(node):
+            if node.is_leaf():
+                output_params = node.operation.infer(node)
+                if "num_params" in output_params:
+                    return output_params["num_params"]
+                else:
+                    return 0
+            else:
+                return sum(count_params(child) for child in node.children)
+        return count_params(root)
 
     def limit_options(self, operation):
         if self.available_rules:
@@ -203,6 +211,30 @@ class DerivationTreeNode:
         node.output_params = deepcopy(self.output_params)
         node.available_rules = deepcopy(self.available_rules) if self.available_rules else None
         return node
+
+    def replace(self, node):
+        # replace the subtree rooted at this node with another node
+        # print(f"Replacing node {self.id} with node {node.id}")
+        if self.is_root():
+            return node
+        # set the parent/children of the new node to those of the old node
+        node.parent = self.parent
+        node.children = self.children
+        # set the parent of the children to the new node
+        for child in node.children:
+            child.parent = node
+        # print(f"Parent of node {node.id} is {node.parent.id}")
+        # print(f"Children of node {node.id} are {[child.id for child in node.children]}")
+
+        # print(f"Parent of self {self.id} is {self.parent.id}")
+        # print(f"Children of self.parent {self.parent.id} are {[child.id for child in self.parent.children]}")
+        # set the child of the old parent to the new node
+        child_idx = self.parent.children.index(self)
+        # print(f"Replacing child {self.id} with child {node.id} at index {child_idx}")
+        self.parent.children[child_idx] = node
+        # delete the old node
+        del self
+
 
     def __sizeof__(self):
         # computes the total size of this object
