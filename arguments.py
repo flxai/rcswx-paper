@@ -16,9 +16,21 @@ def parse_arguments():
     parser.add_argument("--depth_limit", type=int, default=20, help="The depth limit to use.")
     parser.add_argument("--mem_limit", type=int, default=4096, help="The memory limit in MB to use.")
     # search strategy specific details
-    parser.add_argument("--aquisition_fn", type=str, default="uct", help="The aquisition function to use.")
+    # mcts
+    parser.add_argument("--acquisition_fn", type=str, default="uct", help="The acquisition function to use.")
     parser.add_argument("--exploration_weight", type=float, default=1.0, help="The exploration weight to use.")
     parser.add_argument("--incubent_type", type=str, default="parent", help="The incubent type to use in Expected Improvement")
+    parser.add_argument("--reward_mode", type=str, default="sum", help="The reward mode to use.")
+    # evolution
+    parser.add_argument("--regularised", action="store_true", help="Use regularised evolution.")
+    parser.add_argument("--population_size", type=int, default=100, help="The population size to use.")
+    parser.add_argument("--mutation_strategy", type=str, default="random", help="The mutation strategy to use.")
+    parser.add_argument("--mutation_rate", type=float, default=1.0, help="The mutation rate to use.")
+    parser.add_argument("--crossover_strategy", type=str, default="random", help="The crossover strategy to use.")
+    parser.add_argument("--crossover_rate", type=float, default=0.5, help="The crossover rate to use.")
+    parser.add_argument("--selection_strategy", type=str, default="tournament", help="The selection strategy to use.")
+    parser.add_argument("--tournament_size", type=int, default=10, help="The tournament size to use.")
+    parser.add_argument("--elitism", action="store_true", help="Use regularised evolution.")
     # evaluation details
     parser.add_argument("--dataset", type=str, default="mnist", help="The dataset to use.")
     parser.add_argument("--epochs", type=int, default=1, help="The number of epochs to train for.")

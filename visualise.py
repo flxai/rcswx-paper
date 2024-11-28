@@ -173,28 +173,28 @@ def visualise_search_tree(root, children, Q, N, path=None, scale=1, layout="twop
     plt.show()
 
 
-def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="twopi", iteration=None, save_path=None, show=False):
-    def add_edges(graph, root, children, Q, N):
-        if root is not None:
+def visualise_search_tree_2(root, children, Q, N, path=None, score_fn=None, scale=1, layout="twopi", iteration=None, save_path=None, show=False):
+    def add_edges(graph, node, parent, children, Q, N):
+        if node is not None:
             graph.add_node(
-                root.id,
-                op_name=root.operation.name if root.operation else "",
-                score=Q[root],
-                visits=N[root],
-                color=colours[root.node.level] if root.id > 1 else colours["root"],
+                node.id,
+                op_name=node.operation.name if node.operation else "",
+                score=score_fn(node, parent) if parent is not None and score_fn is not None and (node in children) else 0,
+                visits=N[node],
+                color=colours[node.node.level] if node.id > 1 else colours["root"],
             )
-            if root in children:
-                for child in children[root]:
-                    add_edges(graph, child, children, Q, N)
-                    edge_color = "#ab3396" if (root.id, child.id) in path else "grey"
-                    thickness = 2 if (root.id, child.id) in path else 1
-                    graph.add_edge(root.id, child.id, color=edge_color, thickness=thickness)
+            if node in children:
+                for child in children[node]:
+                    add_edges(graph, child, node, children, Q, N)
+                    edge_color = "#ab3396" if (node.id, child.id) in path else "grey"
+                    thickness = 2 if (node.id, child.id) in path else 1
+                    graph.add_edge(node.id, child.id, color=edge_color, thickness=thickness)
 
     # Create a directed graph
     G = nx.DiGraph()
 
     # Add edges to the graph
-    add_edges(G, root, children, Q, N)
+    add_edges(G, root, None, children, Q, N)
 
     # get the depth of the tree
     depth = max(nx.shortest_path_length(G, source=1).values()) + 1
@@ -215,11 +215,11 @@ def visualise_search_tree_2(root, children, Q, N, path=None, scale=1, layout="tw
     palette = sns.color_palette("ch:start=.2,rot=-.3", n_colors=n_colors)
     # assign the colours according to their score/visits on a scale of 0 to 9
     scores = nx.get_node_attributes(G, 'score').values()
+    # if any score is above 1
+    if max(scores) > 1:
+        scores = [score / max(scores) for score in scores]
     visits = nx.get_node_attributes(G, 'visits').values()
-    colors = [
-        palette[int((n_colors - 1) * score / (visit + 0.01))] if visit > 0 else "#cccccc"
-        for score, visit in zip(scores, visits)
-    ]
+    colors = [palette[int((n_colors - 1) * score)] for score in scores]
     sizes = [(10 * scale) ** 2 if visit > 0 else (10 * scale) ** 2 for visit in visits]
     edge_color = [G[u][v]["color"] for u, v in G.edges]
     edge_thickness = [G[u][v]["thickness"] * scale for u, v in G.edges]

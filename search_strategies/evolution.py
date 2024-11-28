@@ -1,4 +1,5 @@
 from collections import deque
+from copy import deepcopy
 from os.path import join, exists
 from os import makedirs, rename, remove
 import pickle
@@ -198,18 +199,26 @@ class Evolver(Sampler):
         return individual
 
     def random_mutation(self, individual):
-        print(f"Mutating architecture:")
-        print(f"{individual.root}")
-        # choose a random node to mutate
-        node = random.choice(individual.root.serialise())
-        print(f"Mutating node:")
-        print(f"{node}")
-        # mutate the node
         success = False
         while not success:
             try:
-                root = self.mutate_node(individual.root, node)
-                individual.root = root
+                print(f"Mutating architecture:")
+                root = deepcopy(individual.root)
+                print(f"{root}")
+                # choose a random node to mutate
+                node = random.choice(root.serialise())
+                print(f"Mutating node:")
+                print(f"{node}")
+                # mutate the node
+                root = self.mutate_node(root, node)
+                individual = Individual(
+                    id=individual.id,
+                    parent_id=individual.parent_id,
+                    root=root,
+                    accuracy=None,
+                    age=0,
+                    hpo_dict=None,
+                )
                 success = True
             except Exception as e:
                 print("MutationError:", e)
@@ -218,9 +227,16 @@ class Evolver(Sampler):
     def mutate_node(self, root, node):
         if node.is_leaf():
             # remove the current option from the available options of this node
+            if node.available_rules is None:
+                options, probs = self.pcfg.get_available_options(node)
+                node.available_rules = {
+                    "options": options,
+                    "probs": probs,
+                }
             node.limit_options(node.operation)
+            print(f"Available options: {[op.name for op in node.available_rules['options']]}")
         # sample a new subtree rooted at this node
-        new_node = self.sample(input_params=node.input_params, root=node)
+        new_node = self.sample(input_params=node.input_params, root=node, safe=False)
         print(f"New subtree:")
         print(f"{new_node}")
         # replace the old node with the new subtree
@@ -231,14 +247,17 @@ class Evolver(Sampler):
         # this will run through the entire network with the existing operations
         # and raise an error if the network is invalid
         print(f"Testing mutated architecture:")
-        print(f"Inputs to sample: {root.input_params}, root: {root}, operations: {[node.operation for node in root.serialise()]}")
+        print(f"Inputs to sample: {root.input_params}")
+        print(f"Root: {root}")
+        print(f"Operations: {[node.operation.name for node in root.serialise()]}")
         self.sample(
             input_params=root.input_params,
             root=root,
             operations=[
                 node.operation
                 for node in root.serialise()
-            ]
+            ],
+            safe=False,
         )
         print(f"Mutation successful")
         print(f"New architecture:")
@@ -378,6 +397,10 @@ class Evolution:
         # print(f"Architecture:")
         # for line in root.serialise():
         #     print(line)
+
+        # remove the oldest individual from the population
+        if len(self.population) >= self.population_size:
+            self.population.popleft()
 
         # save the results
         self.save_results(iteration)

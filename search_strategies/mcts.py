@@ -6,6 +6,7 @@ https://gist.github.com/qpwo/c538c6f73727e254fdc7fab81024f6e1
 """
 from collections import defaultdict
 from copy import deepcopy
+from functools import partial
 from os.path import join, exists
 from os import makedirs, rename, remove
 import pickle
@@ -200,9 +201,10 @@ class MCTS:
             results_path=None,
             continue_search=False,
             # mcts specific parameters
-            aquisition_fn="uct",
+            acquisition_fn="uct",
             exploration_weight=1.0,
             incubent_type="parent",
+            reward_mode="sum",
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
@@ -224,8 +226,9 @@ class MCTS:
         self.continue_search = continue_search
         # mcts specific parameters
         self.exploration_weight = exploration_weight
-        self.aquisition_fn = aquisition_fn
+        self.acquisition_fn = acquisition_fn
         self.incubent_type = incubent_type
+        self.reward_mode = reward_mode
 
         initial_derivation_tree_max_id = 1
         initial_search_tree_max_id = 1
@@ -240,6 +243,13 @@ class MCTS:
             mem_limit=self.mem_limit,
             verbose=self.verbose
         )
+
+        if self.acquisition_fn == "uct":
+            self.acquisition_select = self._uct
+        elif self.acquisition_fn == "ei":
+            self.acquisition_select = self._ei
+        else:
+            raise ValueError("Invalid acquisition function")
 
         # default initialisation of the search
         self.Q = defaultdict(int)
@@ -274,6 +284,10 @@ class MCTS:
         # continue search from previous results
         if self.continue_search:
             self.load_results()
+
+        # fix for the clock
+        self.limiter.timer.start()
+        print(f"Initialised MCTS at {self.limiter.timer.start_time}")
 
     def set_rng_state(self, seed=None, state=None):
         if state:
@@ -382,10 +396,10 @@ class MCTS:
                 n = unexplored.pop()
                 path.append(n)
                 return path
-            if self.aquisition_fn == "uct":
-                node = self._uct_select(node)  # descend a layer deeper
-            elif self.aquisition_fn == "ei":
-                node = self._ei_select(node)  # descend a layer deeper
+            # All children of node should already be expanded:
+            assert all(n in self.children for n in self.children[node])
+            # descend a layer deeper
+            node = max(self.children[node], key=partial(self.acquisition_select, parent=node))
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
@@ -410,49 +424,42 @@ class MCTS:
         "Send the reward back up to the ancestors of the leaf"
         for node in reversed(path):
             self.N[node] += 1
-            self.Q[node] += reward
+            if self.reward_mode == "sum":
+                self.Q[node] += reward
+            elif self.reward_mode == "max":
+                self.Q[node] = max(self.Q[node], reward)
 
-    def _uct_select(self, node):
-        "Select a child of node, balancing exploration & exploitation"
+    def _get_score(self, idx):
+        if self.reward_mode == "sum":
+            return self.Q[idx] / self.N[idx]
+        elif self.reward_mode == "max":
+            return self.Q[idx]
 
-        # All children of node should already be expanded:
-        assert all(n in self.children for n in self.children[node])
+    def _uct(self, node, parent):
+        "Upper confidence bound for trees"
+        log_N_vertex = math.log(self.N[parent])
+        mu = self._get_score(node)
+        return mu + self.exploration_weight * math.sqrt(
+            log_N_vertex / self.N[node]
+        )
 
-        log_N_vertex = math.log(self.N[node])
+    def _ei(self, node, parent):
+        "Expected Improvement for trees"
+        log_N_vertex = math.log(self.N[parent])
 
-        def uct(n):
-            "Upper confidence bound for trees"
-            return self.Q[n] / self.N[n] + self.exploration_weight * math.sqrt(
-                log_N_vertex / self.N[n]
-            )
-
-        return max(self.children[node], key=uct)
-
-    def _ei_select(self, node):
-        "Select a child of node, based on Expected Improvement"
-
-        # All children of node should already be expanded:
-        assert all(n in self.children for n in self.children[node])
-
-        log_N_vertex = math.log(self.N[node])
-
+        # what to compare it to
         if self.incubent_type == "global": # highest avg reward of all nodes
-            idx = max(self.Q, key=self.Q.get)
-            y_star = self.Q[idx] / self.N[idx]
+            y_star = max([self._get_score(n) for n in self.Q])
         elif self.incubent_type == "parent": # same as avg of children
-            y_star = self.Q[node] / self.N[node]
+            y_star = self._get_score(parent)
         elif self.incubent_type == "children":
-            y_star = max(self.Q[n] / self.N[n] for n in self.children[node])
+            y_star = max([self._get_score(n) for n in self.children[parent]])
 
         h = lambda z, mu, sigma: norm.pdf(z, loc=0, scale=1) + z * norm.cdf(z, loc=0, scale=1)
+        mu = self._get_score(node)
+        sigma = math.sqrt(log_N_vertex / self.N[node]) + 0.0001
 
-        def ei(n):
-            "Expected Improvement for trees"
-            mu = self.Q[n] / self.N[n]
-            sigma = math.sqrt(log_N_vertex / self.N[n])
-            return sigma * h((mu - y_star) / sigma, mu, sigma)
-
-        return max(self.children[node], key=ei)
+        return sigma * h((mu - y_star) / sigma, mu, sigma)
 
     def _reward(self, node):
         "Return the reward for the node"
@@ -479,8 +486,21 @@ class MCTS:
             self.Q,
             self.N,
             path=[(a.id, b.id) for a, b in zip(path[0:], path[1:])],
+            score_fn=lambda node, parent: self.Q[node] / self.N[node],
             scale=self.visualise_scale,
             iteration=iteration,
+            save_path=self.figures_path,
+            show=self.visualise,
+        )
+        visualise_search_tree(
+            self.search_tree_root,
+            self.children,
+            self.Q,
+            self.N,
+            path=[(a.id, b.id) for a, b in zip(path[0:], path[1:])],
+            score_fn=self.acquisition_select,
+            scale=self.visualise_scale,
+            iteration=f"acquisition_{iteration}",
             save_path=self.figures_path,
             show=self.visualise,
         )

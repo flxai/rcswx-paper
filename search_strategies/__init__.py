@@ -41,9 +41,10 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
                 args.results_path,
                 utils.get_exp_path(args),
             ),
-            "aquisition_fn": args.aquisition_fn,
+            "acquisition_fn": args.acquisition_fn,
             "exploration_weight": args.exploration_weight,
             "incubent_type": args.incubent_type,
+            "reward_mode": args.reward_mode,
         },
         "evolution": {
             "figures_path": join(
