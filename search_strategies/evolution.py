@@ -165,6 +165,8 @@ class Evolver(Sampler):
             return population.tournament_selection(self.tournament_size, key=lambda x: x.accuracy)
 
     def crossover(self, parent1, parent2):
+        # TODO Find out whether one-point and two-point strategies actually transfer from strings to trees
+        # TODO Implement
         if random.random() < self.crossover_rate:
             if self.crossover_strategy == "one_point":
                 return self.one_point_crossover(parent1, parent2)
@@ -173,6 +175,8 @@ class Evolver(Sampler):
         return parent1
 
     def one_point_crossover(self, parent1, parent2):
+        # TODO Find out whether one-point and two-point strategies actually transfer from strings to trees
+        # TODO Implement
         # select a random node from parent1
         node1 = random.choice(parent1.root.serialise())
         # select a random node from parent2
@@ -180,9 +184,12 @@ class Evolver(Sampler):
         # create a new individual by swapping the subtrees
         child = parent1.root.copy()
         child.replace(node1, node2)
+        # Should this not return two new trees instead?
         return child
 
     def two_point_crossover(self, parent1, parent2):
+        # TODO Find out whether one-point and two-point strategies actually transfer from strings to trees
+        # TODO Implement
         # select a random node from parent1
         node1 = random.choice(parent1.root.serialise())
         # select a random node from parent2
@@ -190,6 +197,7 @@ class Evolver(Sampler):
         # create a new individual by swapping the subtrees
         child = parent1.root.copy()
         child.replace(node1, node2)
+        # Should this not return two new trees instead?
         return child
 
     def mutate(self, individual):
