@@ -9,7 +9,7 @@ def random_evaluation_fn(node, args, train_loader, val_loader):
 
 def evaluation_fn(node, args, train_loader, val_loader):
     # build the network
-    backbone = node.build(node)
+    backbone = node.build(node, set_memory_checkpoint=True)
     model = Network(
         backbone,
         node.output_params["shape"],

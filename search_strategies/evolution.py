@@ -118,6 +118,7 @@ class Evolver(Sampler):
         max_id_limit=1000,
         depth_limit=20,
         mem_limit=4096,
+        limiter=None,
         mutation_strategy="random",
         mutation_rate=1.0,
         crossover_strategy="two_point",
@@ -136,6 +137,7 @@ class Evolver(Sampler):
             mem_limit=mem_limit,
             verbose=verbose
         )
+        self.limiter = limiter
         self.mutation_strategy = mutation_strategy
         self.mutation_rate = mutation_rate
         self.crossover_strategy = crossover_strategy
@@ -236,7 +238,8 @@ class Evolver(Sampler):
             node.limit_options(node.operation)
             print(f"Available options: {[op.name for op in node.available_rules['options']]}")
         # sample a new subtree rooted at this node
-        new_node = self.sample(input_params=node.input_params, root=node, safe=False)
+        self.limiter.timer.start()
+        new_node = self.sample(input_params=node.input_params, root=node)
         print(f"New subtree:")
         print(f"{new_node}")
         # replace the old node with the new subtree
@@ -250,6 +253,7 @@ class Evolver(Sampler):
         print(f"Inputs to sample: {root.input_params}")
         print(f"Root: {root}")
         print(f"Operations: {[node.operation.name for node in root.serialise()]}")
+        self.limiter.timer.start()
         self.sample(
             input_params=root.input_params,
             root=root,
@@ -296,6 +300,7 @@ class Evolution:
             selection_strategy="tournament", # "tournament" or "roulette"
             tournament_size=10, # only used if selection_strategy is "tournament"
             elitism=True, # keep the best individual in the population
+            n_tries=None, # number of tries to use in evolution before randomly generating an individual
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
@@ -318,6 +323,7 @@ class Evolution:
         # evolution specific parameters
         self.regularised = regularised
         self.population_size = population_size
+        self.n_tries = n_tries
 
         self.evolver = Evolver(
             pcfg=pcfg,
@@ -326,6 +332,7 @@ class Evolution:
             max_id_limit=max_id_limit,
             depth_limit=depth_limit,
             mem_limit=mem_limit,
+            limiter=limiter,
             mutation_strategy=mutation_strategy,
             mutation_rate=mutation_rate,
             crossover_strategy=crossover_strategy,
@@ -344,6 +351,10 @@ class Evolution:
 
         if self.continue_search:
             self.load_results()
+
+        # fix for the clock
+        self.limiter.timer.start()
+        print(f"Initialised MCTS at {self.limiter.timer.start_time}")
 
     def set_rng_state(self, seed=None, state=None):
         if state:
@@ -369,34 +380,44 @@ class Evolution:
 
     def step(self, iteration, mode):
         success = False
+        n_tries = 0
         while not success:
+            n_tries += 1
             try:
                 # start timer
                 self.limiter.timer.start()
+
                 # sample a new individual
+                should_be_random = self.n_tries is not None and n_tries > self.n_tries
                 if mode == "sample":
+                if mode == "sample" or should_be_random:
                     root = self.evolver.sample(self.input_params)
                 elif mode == "evolve":
                     root = self.evolver.evolve(self.population)
                 sample_duration = self.limiter.timer()
 
+                # check if batch pass does not exceed the time limit
+                if not self.limiter.check_batch_pass_time(root, check_memory=True):
+                    print("Batch pass time or memory exceeded, trying again")
+                    continue
+
                 # start timer
                 self.limiter.timer.start()
+
                 # evaluate the network
+                print(f"Evaluating architecture: {root}")
                 reward = self.evaluation_fn(root)
                 eval_duration = self.limiter.timer()
 
                 success = True
-            except (RuntimeError, MemoryError):
-                print("GPU or RAM Memory error, trying again")
+            except (RuntimeError, MemoryError) as e:
+                print(f"Error in generating new individual: {e}")
 
         # add the new individual to the population
         self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
         self.population.append(Individual(id=iteration, parent_id=None, root=root, accuracy=reward))
         print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
-        # print(f"Architecture:")
-        # for line in root.serialise():
-        #     print(line)
+        print(f"Architecture: {root}")
 
         # remove the oldest individual from the population
         if len(self.population) >= self.population_size:

@@ -64,6 +64,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             "selection_strategy": args.selection_strategy,
             "tournament_size": args.tournament_size,
             "elitism": args.elitism,
+            "n_tries": args.n_tries,
         }
     }
 
