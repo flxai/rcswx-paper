@@ -469,6 +469,9 @@ class Permute(nn.Module):
     def forward(self, x):
         return x.permute(self.dims)
 
+    def __repr__(self):
+        return f"Permute(dims={self.dims})"
+
 
 class DotProduct(nn.Module):
     """Dot product of two tensors with optional scaling."""
