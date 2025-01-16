@@ -27,6 +27,7 @@ def inherit_aggregation(node):
         node.input_params["other_mode"] = node.parent.children[1].output_params["mode"]
 
 def give_back_default(node):
+    # print(f"Give back {node} with input params {node.input_params} and output params {node.output_params}")
     node.parent.output_params = node.output_params
 
 # modules

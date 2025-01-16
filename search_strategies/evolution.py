@@ -261,7 +261,6 @@ class Evolver(Sampler):
                 node.operation
                 for node in root.serialise()
             ],
-            safe=False,
         )
         print(f"Mutation successful")
         print(f"New architecture:")

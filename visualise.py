@@ -179,7 +179,7 @@ def visualise_search_tree_2(root, children, Q, N, path=None, score_fn=None, scal
             graph.add_node(
                 node.id,
                 op_name=node.operation.name if node.operation else "",
-                score=score_fn(node, parent) if parent is not None and score_fn is not None and (node in children) else 0,
+                score=score_fn(node, parent) if parent is not None and score_fn is not None and (node in children) and N[node] != 0 else 0,
                 visits=N[node],
                 color=colours[node.node.level] if node.id > 1 else colours["root"],
             )
@@ -219,7 +219,7 @@ def visualise_search_tree_2(root, children, Q, N, path=None, score_fn=None, scal
     if max(scores) > 1:
         scores = [score / max(scores) for score in scores]
     visits = nx.get_node_attributes(G, 'visits').values()
-    colors = [palette[int((n_colors - 1) * score)] for score in scores]
+    colors = [palette[int((n_colors - 1) * score)] if node != 1 else '#000000' for node, score in zip(G.nodes, scores)]
     sizes = [(10 * scale) ** 2 if visit > 0 else (10 * scale) ** 2 for visit in visits]
     edge_color = [G[u][v]["color"] for u, v in G.edges]
     edge_thickness = [G[u][v]["thickness"] * scale for u, v in G.edges]

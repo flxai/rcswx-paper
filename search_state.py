@@ -332,6 +332,13 @@ class Stack:
     def is_empty(self):
         return self.stack == []
 
+    def is_completed(self):
+        """ Check if the stack only contain nodes that have been visited """
+        for node, visited in self.stack:
+            if not visited:
+                return False
+        return True
+
     def copy(self):
         # serialise the stack and then reconstruct it
         old_node_list = self.stack[0][0].serialise()

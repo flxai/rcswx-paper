@@ -16,10 +16,12 @@ class PCFG:
 
     def sample(self, node, verbose=False):
         available_options, available_probs = self.get_available_options(node, verbose)
+        node.available_rules = {"options": available_options, "probs": available_probs}
         # if verbose: print(f"Sampled options for node {node.id} at level {node.level}: {available_options}, {available_probs}")
         options, probs = self.filter_options(node, available_options, available_probs, verbose)
         if verbose: print(f"Filtered options for node {node.id} at level {node.level}: {[op.name for op in options]}")
-        node.available_rules = {"options": options, "probs": probs}
+        if verbose: print(f"Full list of options at node {node.id}: {[op.name for op in available_options]}")
+        # node.available_rules = {"options": options, "probs": probs}
         if len(options) > 0:
             # if verbose: print(f"Sampled options for node {node.id} at level {node.level}: {options}, {probs}")
             operation = choices(
