@@ -325,6 +325,7 @@ class Evolution:
         # evolution specific parameters
         self.regularised = regularised
         self.population_size = population_size
+        self.architecture_seed = architecture_seed
         if self.architecture_seed:
             self.architecture_seed = (
                 architecture_seed.split('+') * 
