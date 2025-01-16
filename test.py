@@ -75,16 +75,6 @@ grammar = PCFG(
 )
 print(grammar)
 
-_, _, trainval_loader, test_loader = get_data_loaders(
-    dataset=args.dataset,
-    batch_size=args.batch_size,
-    image_size=args.image_size,
-    root="../einspace/data",
-    load_in_gpu=args.load_in_gpu,
-    device=args.device,
-    log=args.verbose_eval,
-)
-
 args.epochs = args.test_epochs
 eval_fn = partial(
     evaluation_fn,
