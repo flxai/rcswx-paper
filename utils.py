@@ -51,6 +51,7 @@ def get_exp_path(args):
     elif args.search_strategy == "evolution":
         exp_path = join(exp_path, f"regularised={args.regularised}")
         exp_path = join(exp_path, f"population_size={args.population_size}")
+        exp_path = join(exp_path, f"architecture_seed={args.architecture_seed}")
         exp_path = join(exp_path, f"mutation_strategy={args.mutation_strategy}")
         exp_path = join(exp_path, f"mutation_rate={args.mutation_rate}")
         exp_path = join(exp_path, f"crossover_strategy={args.crossover_strategy}")

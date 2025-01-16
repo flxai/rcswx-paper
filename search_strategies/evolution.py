@@ -1,5 +1,6 @@
 from collections import deque
 from copy import deepcopy
+import math
 from os.path import join, exists
 from os import makedirs, rename, remove
 import pickle
@@ -8,6 +9,7 @@ import random
 from tqdm import tqdm
 
 from search_strategies.random_search import Sampler
+from baselines import build_baseline, baseline_dict
 from visualise import visualise_derivation_tree
 from plot import Plotter
 
@@ -292,6 +294,7 @@ class Evolution:
             # evolution specific parameters
             regularised=True, # use regularised evolution
             population_size=100, # number of individuals in the population
+            architecture_seed=None,
             mutation_strategy="random", # "random"
             mutation_rate=1.0, # probability of mutation
             crossover_strategy="two_point", # "one_point" or "two_point"
@@ -322,6 +325,12 @@ class Evolution:
         # evolution specific parameters
         self.regularised = regularised
         self.population_size = population_size
+        self.architecture_seed = (
+            architecture_seed.split('+') * 
+            math.ceil(self.population_size / len(architecture_seed.split('+')))
+        )[:self.population_size]
+        self.seed_population = {}
+        print(f"Architecture seed: {self.architecture_seed}")
         self.n_tries = n_tries
 
         self.evolver = Evolver(
@@ -369,7 +378,10 @@ class Evolution:
 
         # populate the first generation
         for iteration in tqdm(range(self.iteration, self.population_size), desc="Initialising population", initial=self.iteration, total=self.population_size):
-            self.step(iteration, "sample")
+            if self.architecture_seed:
+                self.step(iteration, "seed")
+            else:
+                self.step(iteration, "sample")
 
         if self.iteration < self.population_size:
             self.iteration = self.population_size
@@ -388,7 +400,10 @@ class Evolution:
 
                 # sample a new individual
                 should_be_random = self.n_tries is not None and n_tries > self.n_tries
-                if mode == "sample":
+                if mode == "seed":
+                    seed_arch_name = self.architecture_seed.pop(0)
+                    seed_arch = baseline_dict[seed_arch_name]
+                    root = build_baseline(seed_arch, self.input_params)
                 if mode == "sample" or should_be_random:
                     root = self.evolver.sample(self.input_params)
                 elif mode == "evolve":
@@ -404,9 +419,15 @@ class Evolution:
                 self.limiter.timer.start()
 
                 # evaluate the network
-                print(f"Evaluating architecture: {root}")
-                reward = self.evaluation_fn(root)
-                eval_duration = self.limiter.timer()
+                if mode == "seed" and seed_arch_name in self.seed_population:
+                    print(f"Seed architecture already evaluated: {seed_arch_name}")
+                    root, reward, sample_duration, eval_duration = self.seed_population[seed_arch_name]
+                else:
+                    print(f"Evaluating architecture: {root}")
+                    reward = self.evaluation_fn(root)
+                    eval_duration = self.limiter.timer()
+                    if mode == "seed":
+                        self.seed_population[seed_arch_name] = (root, reward, sample_duration, eval_duration)
 
                 success = True
             except (RuntimeError, MemoryError) as e:

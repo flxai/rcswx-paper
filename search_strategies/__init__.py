@@ -58,6 +58,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             ),
             "regularised": args.regularised,
             "population_size": args.population_size,
+            "architecture_seed": args.architecture_seed,
             "mutation_strategy": args.mutation_strategy,
             "mutation_rate": args.mutation_rate,
             "crossover_strategy": args.crossover_strategy,

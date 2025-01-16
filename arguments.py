@@ -27,6 +27,7 @@ def parse_arguments():
     # evolution
     parser.add_argument("--regularised", action="store_true", help="Use regularised evolution.")
     parser.add_argument("--population_size", type=int, default=100, help="The population size to use.")
+    parser.add_argument("--architecture_seed", type=str, default=None, help="Baseline architectures to seed the search with, separate with '+', e.g. resnet18+transformer+mlpmixer.")
     parser.add_argument("--mutation_strategy", type=str, default="random", help="The mutation strategy to use.")
     parser.add_argument("--mutation_rate", type=float, default=1.0, help="The mutation rate to use.")
     parser.add_argument("--crossover_strategy", type=str, default="random", help="The crossover strategy to use.")
