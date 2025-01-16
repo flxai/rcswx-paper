@@ -325,10 +325,11 @@ class Evolution:
         # evolution specific parameters
         self.regularised = regularised
         self.population_size = population_size
-        self.architecture_seed = (
-            architecture_seed.split('+') * 
-            math.ceil(self.population_size / len(architecture_seed.split('+')))
-        )[:self.population_size]
+        if self.architecture_seed:
+            self.architecture_seed = (
+                architecture_seed.split('+') * 
+                math.ceil(self.population_size / len(architecture_seed.split('+')))
+            )[:self.population_size]
         self.seed_population = {}
         print(f"Architecture seed: {self.architecture_seed}")
         self.n_tries = n_tries
