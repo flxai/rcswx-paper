@@ -47,6 +47,7 @@ def get_exp_path(args):
         else:
             exp_path = join(exp_path, f"incubent_type={args.incubent_type}")
         exp_path = join(exp_path, f"reward_mode={args.reward_mode}")
+        exp_path = join(exp_path, f"add_full_paths={args.add_full_paths}")
     elif args.search_strategy == "evolution":
         exp_path = join(exp_path, f"regularised={args.regularised}")
         exp_path = join(exp_path, f"population_size={args.population_size}")

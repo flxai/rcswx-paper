@@ -45,6 +45,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             "exploration_weight": args.exploration_weight,
             "incubent_type": args.incubent_type,
             "reward_mode": args.reward_mode,
+            "add_full_paths": args.add_full_paths,
         },
         "evolution": {
             "figures_path": join(

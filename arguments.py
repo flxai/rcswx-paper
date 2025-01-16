@@ -23,6 +23,7 @@ def parse_arguments():
     parser.add_argument("--exploration_weight", type=float, default=1.0, help="The exploration weight to use.")
     parser.add_argument("--incubent_type", type=str, default="parent", help="The incubent type to use in Expected Improvement")
     parser.add_argument("--reward_mode", type=str, default="sum", help="The reward mode to use.")
+    parser.add_argument("--add_full_paths", action="store_true", help="Add the full paths to the search tree in MCTS.")
     # evolution
     parser.add_argument("--regularised", action="store_true", help="Use regularised evolution.")
     parser.add_argument("--population_size", type=int, default=100, help="The population size to use.")
