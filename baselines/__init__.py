@@ -1,5 +1,5 @@
 from .resnet import resnet18_no_maxpool, resnet18_conv7x7_no_maxpool
-from .transformer import transformer_d2, transformer_d4, transformer_d8
+from .vit import vit_d2, vit_d4, vit_d8
 from .mlpmixer import mlpmixer_d2, mlpmixer_d4, mlpmixer_d8
 
 from search_strategies.random_search import Sampler
@@ -12,7 +12,7 @@ import re
 
 baseline_dict = {
     "resnet18": resnet18_no_maxpool,
-    "transformer": transformer_d4,
+    "vit": vit_d4,
     "mlpmixer": mlpmixer_d4,
 }
 

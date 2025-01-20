@@ -70,7 +70,7 @@ prenorm_transformer_layer = f"""
             add(2)
         ]
     ]"""
-transformer_d2 = f"""
+vit_d2 = f"""
     sequential[
         sequential[
             routing[im2col4k4s0p, computation[linear512], identity],
@@ -81,7 +81,7 @@ transformer_d2 = f"""
             {transformer_layer}
         ]
     ]"""
-transformer_d4 = f"""
+vit_d4 = f"""
     sequential[
         sequential[
             routing[im2col4k4s0p, computation[linear512], identity],
@@ -98,7 +98,7 @@ transformer_d4 = f"""
             ]
         ]
     ]"""
-transformer_d8 = f"""
+vit_d8 = f"""
     sequential[
         sequential[
             routing[im2col4k4s0p, computation[linear512], identity],
