@@ -4,8 +4,8 @@ sdpa = f"""
         sequential[
             branching(2)[
                 clone(2),
-                routing[identity, computation[linear64], permute21],
                 computation[linear64],
+                routing[identity, computation[linear64], permute21],
                 dot_product(scaled=True)
             ],
             computation[softmax]
@@ -41,13 +41,45 @@ ffn = """
     ]"""
 transformer_layer = f"""
     sequential[
+        sequential[
+            branching(2)[
+                clone(2),
+                {mhsa_h4},
+                computation[identity],
+                add(2)
+            ],
+            computation[norm]
+        ],
+        sequential[
+            branching(2)[
+                clone(2),
+                {ffn},
+                computation[identity],
+                add(2)
+            ],
+            computation[norm]
+        ]
+    ]"""
+prenorm_transformer_layer = f"""
+    sequential[
         branching(2)[
             clone(2),
-            {mhsa_h4},
+            sequential[
+                computation[norm]
+                {mhsa_h4},
+            ],
             computation[identity],
             add(2)
         ],
-        norm
+        branching(2)[
+            clone(2),
+            sequential[
+                computation[norm]
+                {ffn},
+            ],
+            computation[identity],
+            add(2)
+        ]
     ]"""
 prenorm_transformer_layer = f"""
     sequential[
@@ -77,8 +109,8 @@ vit_d2 = f"""
             computation[pos_enc]
         ],
         sequential[
-            {transformer_layer},
-            {transformer_layer}
+            {prenorm_transformer_layer},
+            {prenorm_transformer_layer}
         ]
     ]"""
 vit_d4 = f"""
@@ -89,12 +121,12 @@ vit_d4 = f"""
         ],
         sequential[
             sequential[
-                {transformer_layer},
-                {transformer_layer}
+                {prenorm_transformer_layer},
+                {prenorm_transformer_layer}
             ],
             sequential[
-                {transformer_layer},
-                {transformer_layer}
+                {prenorm_transformer_layer},
+                {prenorm_transformer_layer}
             ]
         ]
     ]"""
@@ -107,22 +139,22 @@ vit_d8 = f"""
         sequential[
             sequential[
                 sequential[
-                    {transformer_layer},
-                    {transformer_layer}
+                    {prenorm_transformer_layer},
+                    {prenorm_transformer_layer}
                 ],
                 sequential[
-                    {transformer_layer},
-                    {transformer_layer}
+                    {prenorm_transformer_layer},
+                    {prenorm_transformer_layer}
                 ]
             ],
             sequential[
                 sequential[
-                    {transformer_layer},
-                    {transformer_layer}
+                    {prenorm_transformer_layer},
+                    {prenorm_transformer_layer}
                 ],
                 sequential[
-                    {transformer_layer},
-                    {transformer_layer}
+                    {prenorm_transformer_layer},
+                    {prenorm_transformer_layer}
                 ]
             ]
         ]

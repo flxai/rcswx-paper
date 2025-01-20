@@ -1,4 +1,5 @@
 from .resnet import resnet18_no_maxpool, resnet18_conv7x7_no_maxpool
+from .wideresnet import wideresnet16_4
 from .vit import vit_d2, vit_d4, vit_d8
 from .mlpmixer import mlpmixer_d2, mlpmixer_d4, mlpmixer_d8
 
@@ -12,8 +13,9 @@ import re
 
 baseline_dict = {
     "resnet18": resnet18_no_maxpool,
+    "wideresnet16_4": wideresnet16_4,
     "vit": vit_d4,
-    "mlpmixer": mlpmixer_d4,
+    "mlpmixer": mlpmixer_d8,
 }
 
 

@@ -1,6 +1,7 @@
 # The ResNet18 architecture, represented in einspace
 # the MaxPool operation in the stem is replaced by a convolution
 
+
 resnet_stem_no_maxpool = """
     sequential[
         sequential[
