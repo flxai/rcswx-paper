@@ -607,6 +607,42 @@ def linear(dim):
         child_levels=[],
     )
 
+def build_linear_x(dim_factor, node):
+    out_dim = int(node.input_params["shape"][-1] * dim_factor)
+    return layers.EinLinear(node.input_params["shape"][-1], out_dim)
+
+def infer_linear_x(dim_factor, node):
+    out_dim = int(node.input_params["shape"][-1] * dim_factor)
+    return {
+        "shape": torch.Size(
+            list(node.input_params["shape"][:-1]) + [out_dim]
+        ),
+        "other_shape": node.input_params["other_shape"],
+        "mode": node.input_params["mode"],
+        "other_mode": node.input_params["other_mode"],
+        "branching_factor": node.input_params["branching_factor"],
+        "last_im_shape": node.input_params["last_im_shape"],
+        "num_params": (
+            node.input_params["shape"][-1] *  out_dim + out_dim
+        ),
+    }
+
+def valid_linear_x(dim_factor, node):
+    out_dim = int(node.input_params["shape"][-1] * dim_factor)
+    return out_dim > 0 and node.input_params["shape"][-1] > 0
+
+def linear_x(dim_factor):
+    return Operation(
+        name=f"linear(x{dim_factor})",
+        build=partial(build_linear_x, dim_factor),
+        infer=partial(infer_linear_x, dim_factor),
+        valid=partial(valid_linear_x, dim_factor),
+        inherit=[inherit_first_child],
+        give_back = [give_back_default],
+        type="terminal",
+        child_levels=[],
+    )
+
 def build_norm(node):
     return layers.EinNorm(node.input_params["shape"])
 

@@ -1,6 +1,6 @@
 from .resnet import resnet18_no_maxpool, resnet18_conv7x7_no_maxpool
 from .transformer import transformer_d2, transformer_d4, transformer_d8
-from .mlpmixer import mlpmixer
+from .mlpmixer import mlpmixer_d2, mlpmixer_d4, mlpmixer_d8
 
 from search_strategies.random_search import Sampler
 from grammars.einspace import *
@@ -13,7 +13,7 @@ import re
 baseline_dict = {
     "resnet18": resnet18_no_maxpool,
     "transformer": transformer_d4,
-    "mlpmixer": mlpmixer,
+    "mlpmixer": mlpmixer_d4,
 }
 
 
@@ -52,12 +52,12 @@ def build_baseline(baseline, input_params=None):
         "im2col4k4s0p": "im2col(4, 4, 0)",
         "im2col8k8s0p": "im2col(8, 8, 0)",
         "im2col16k16s0p": "im2col(16, 16, 0)",
-        "permute21": "permute(0, 2, 1)",
-        "permute132": "permute(0, 1, 3, 2)",
-        "permute312": "permute(0, 3, 1, 2)",
-        "permute321": "permute(0, 3, 2, 1)",
-        "permute213": "permute(0, 2, 1, 3)",
-        "permute231": "permute(0, 2, 3, 1)",
+        "permute21": "permute([0, 2, 1])",
+        "permute132": "permute([0, 1, 3, 2])",
+        "permute312": "permute([0, 3, 1, 2])",
+        "permute321": "permute([0, 3, 2, 1])",
+        "permute213": "permute([0, 2, 1, 3])",
+        "permute231": "permute([0, 2, 3, 1])",
         "linear16": "linear(16)",
         "linear32": "linear(32)",
         "linear64": "linear(64)",
@@ -66,7 +66,10 @@ def build_baseline(baseline, input_params=None):
         "linear512": "linear(512)",
         "linear1024": "linear(1024)",
         "linear2048": "linear(2048)",
+        "pos_enc": "positional_encoding"
     }
+
+    # print(baseline)
 
     operations = []
     # first remove all whitespace
@@ -76,7 +79,16 @@ def build_baseline(baseline, input_params=None):
     # by commas, and the following brackets []
     op_names = re.split(r",|\[|\]", baseline)
     op_names = [op.strip() for op in op_names if op.strip() != ""]
-    # print(operations)
+    # print(op_names)
+    # fix operations with spaces in their hyperparams, e.g. 'cat(4, 2)'
+    indices_to_remove = []
+    for a, b in zip(range(len(op_names) - 1), range(1, len(op_names))):
+        if "cat" in op_names[a]:
+            op_names[a] = f"{op_names[a]}, {op_names[b]}"
+            indices_to_remove.append(b)
+    # print(indices_to_remove)
+    op_names = [o for i, o in enumerate(op_names) if i not in indices_to_remove]
+    # print(op_names)
     # print(len(op_names))
     
     for op_name in op_names:
