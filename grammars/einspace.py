@@ -489,24 +489,17 @@ def build_im2col(kernel_size, stride, padding, node):
     )
 
 def infer_im2col(kernel_size, stride, padding, node):
-    m = layers.Im2Col(
-        input_shape=node.input_params["shape"],
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=padding,
-    )
-    shape = m(torch.randn(*node.input_params["shape"])).shape
-    # calculate the shape of the output tensor using the formula:
-    # batch (groups patch_size) kernel_squared_times_in_channels_divided_by_groups
-    # batch, channels, height, width = node.input_params["shape"]
-    # patch size is how many times the kernel fits in the height and width
-    # patch_size = (height - kernel_size + 2 * padding) // stride + 1
-    # shape = torch.Size([
-    #     batch,
-    #     patch_size,
-    #     channels * kernel_size * kernel_size,
-    # ])
-    last_im_shape = m.fold_output_shape
+    batch_size, channels, height, width = node.input_params["shape"]
+
+    output_height = (height + 2 * padding - kernel_size) // stride + 1
+    output_width = (width + 2 * padding - kernel_size) // stride + 1
+
+    patch_size = output_height * output_width
+    flattened_patch_size = kernel_size * kernel_size * channels
+
+    shape = torch.Size([batch_size, patch_size, flattened_patch_size])
+    last_im_shape = (output_height, output_width)
+
     return {
         "shape": shape,
         "other_shape": node.input_params["other_shape"],
@@ -542,9 +535,10 @@ def build_col2im(node):
     return m
 
 def infer_col2im(node):
-    m = layers.Col2Im()
-    m.output_shape = node.input_params["last_im_shape"]
-    shape = m(torch.randn(*node.input_params["shape"])).shape
+    batch_size, _, channels = node.input_params["shape"]
+    output_height, output_width = node.input_params["last_im_shape"]
+    shape = torch.Size([batch_size, channels, output_height, output_width])
+
     return {
         "shape": shape,
         "other_shape": node.input_params["other_shape"],
