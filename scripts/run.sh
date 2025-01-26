@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # take two input arguments, config file and the GPU id
 CONFIG_FILE=$1
