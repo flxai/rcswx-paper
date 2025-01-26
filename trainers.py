@@ -155,80 +155,65 @@ class Trainer:
 
             train_start = time()
             valid_score = 0.0 if self.config["dataset"] != "psicov" else -torch.inf
-            for epoch in range(1, self.epochs + 1):
-                epoch_start = time()
-                model.train()
-                labels, predictions = [], []
-                try:
-                    for data, target in self.train_dataloader:
-                        if not self.config["load_in_gpu"]:
-                            data, target = data.to(self.device), target.to(
-                                self.device
+
+            if self.epochs == 0:
+                epoch = 0
+                valid_score = self.validate(model, epoch)
+            else:
+                for epoch in range(1, self.epochs + 1):
+                    epoch_start = time()
+                    model.train()
+                    labels, predictions = [], []
+                    try:
+                        for data, target in self.train_dataloader:
+                            if not self.config["load_in_gpu"]:
+                                data, target = data.to(self.device), target.to(
+                                    self.device
+                                )
+                            optimizer.zero_grad()
+                            output = model(data)
+
+                            # store labels and predictions to compute metric
+                            if self.score == "xe":
+                                labels += target.cpu().tolist()
+                                predictions += torch.argmax(
+                                    output.detach().cpu(), 1
+                                ).tolist()
+                            elif self.score == "multi_hot":
+                                labels += logits_to_preds(target.cpu(), "multi_hot")[0]
+                                predictions += logits_to_preds(output.cpu(), "multi_hot")[0]
+                            elif self.score == "map":
+                                labels += target.cpu().tolist()
+                                predictions += output.detach().cpu().tolist()
+                            else:
+                                labels += target.cpu().tolist()
+                                predictions += output.detach().cpu().tolist()
+
+                            loss = self.criterion(output, target)
+                            if torch.isnan(loss):
+                                raise ValueError("Training loss became nan")
+                            loss.backward()
+                            optimizer.step()
+                        scheduler.step()
+
+                        valid_score = self.validate(model, epoch)
+
+                        if self.log:
+                            print(
+                                "\tEpoch {:>3}/{:<3} | Train Loss: {:>6.2f} | Valid Score: {:>6.2f} | Epoch Time: {:>6}s".format(
+                                    epoch,
+                                    self.epochs,
+                                    loss.item(),
+                                    valid_score,
+                                    int(time() - epoch_start),
+                                ),
+                                flush=True,
                             )
-                        optimizer.zero_grad()
-                        output = model(data)
-
-                        # store labels and predictions to compute metric
-                        if self.score == "xe":
-                            labels += target.cpu().tolist()
-                            predictions += torch.argmax(
-                                output.detach().cpu(), 1
-                            ).tolist()
-                        elif self.score == "multi_hot":
-                            labels += logits_to_preds(target.cpu(), "multi_hot")[0]
-                            predictions += logits_to_preds(output.cpu(), "multi_hot")[0]
-                        elif self.score == "map":
-                            labels += target.cpu().tolist()
-                            predictions += output.detach().cpu().tolist()
-                        else:
-                            labels += target.cpu().tolist()
-                            predictions += output.detach().cpu().tolist()
-
-                        loss = self.criterion(output, target)
-                        if torch.isnan(loss):
-                            raise ValueError("Training loss became nan")
-                        loss.backward()
-                        optimizer.step()
-                    scheduler.step()
-
-                    valid_score = 0.0 if self.config["dataset"] != "psicov" else -torch.inf
-                    if self.valid_dataloader is not None:
-                        # fsd50k evaluation is super slow. Only do it at the end
-                        if self.config["dataset"] == "fsd50k":
-                            if epoch == self.epochs:
-                                valid_score = self.evaluate(model, "val")
-                            else:
-                                valid_score = 0
-                        else:
-                            valid_score = self.evaluate(model, "val")
-                    elif self.test_dataloader is not None:
-                        # fsd50k evaluation is super slow. Only do it at the end
-                        if self.config["dataset"] == "fsd50k":
-                            if epoch == self.epochs:
-                                valid_score = self.evaluate(model, "test")
-                            else:
-                                valid_score = 0
-                        else:
-                            valid_score = self.evaluate(model, "test")
-                    else:
-                        raise Exception("No validation or test set provided")
-
-                    if self.log:
-                        print(
-                            "\tEpoch {:>3}/{:<3} | Train Loss: {:>6.2f} | Valid Score: {:>6.2f} | Epoch Time: {:>6}s".format(
-                                epoch,
-                                self.epochs,
-                                loss.item(),
-                                valid_score,
-                                int(time() - epoch_start),
-                            ),
-                            flush=True,
-                        )
-                except ValueError as e:
-                    # self.logger.write(f"{e}\n")
-                    print(f"Did loss become nan?: {e}")
-                    print(traceback.format_exc())
-                    break
+                    except ValueError as e:
+                        # self.logger.write(f"{e}\n")
+                        print(f"Did loss become nan?: {e}")
+                        print(traceback.format_exc())
+                        break
 
             # save the best overall model
             if valid_score > self.best["val_score"] or self.config["hpo_runs"] == 1:
@@ -242,6 +227,30 @@ class Trainer:
                 self.best["duration"] = int(time() - train_start)
             if self.log: print(f"Training time: {int(time() - train_start)}s", flush=True)
         return self.best
+
+    def validate(self, model, epoch):
+        valid_score = 0.0 if self.config["dataset"] != "psicov" else -torch.inf
+        if self.valid_dataloader is not None:
+            # fsd50k evaluation is super slow. Only do it at the end
+            if self.config["dataset"] == "fsd50k":
+                if epoch == self.epochs:
+                    valid_score = self.evaluate(model, "val")
+                else:
+                    valid_score = 0
+            else:
+                valid_score = self.evaluate(model, "val")
+        elif self.test_dataloader is not None:
+            # fsd50k evaluation is super slow. Only do it at the end
+            if self.config["dataset"] == "fsd50k":
+                if epoch == self.epochs:
+                    valid_score = self.evaluate(model, "test")
+                else:
+                    valid_score = 0
+            else:
+                valid_score = self.evaluate(model, "test")
+        else:
+            raise Exception("No validation or test set provided")
+        return valid_score
 
     # print out the model's accuracy over the valid dataset
     def evaluate(self, model, split="val"):

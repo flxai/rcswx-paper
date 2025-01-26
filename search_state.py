@@ -88,6 +88,9 @@ class DerivationTreeNode:
         # Compute the output params for the current node
         if self.operation.is_terminal():
             self.output_params = self.operation.infer(self)
+
+            if not self.limiter.check_build_safe(self):
+                raise MemoryError(f"Individual memory limit reached when initialising: {self}")
         else:
             self.children = []
             for i, child_level in enumerate(operation.child_levels):
@@ -191,12 +194,25 @@ class DerivationTreeNode:
             # print(f"Operation {operation.name} not in available rules")
         # print(f"Options left {[op.name for op in self.available_rules['options']]}")
 
-    def build(self, node):
+    def build(self, node, set_memory_checkpoint=False):
+        if set_memory_checkpoint:
+            self.limiter.set_memory_checkpoint()
+        #print(f"Check memory: {self.operation}")
+
         # check memory first
         if not self.limiter.check_memory():
             raise MemoryError(f"Memory limit reached: {self.limiter.memory}")
+
+        if not self.limiter.check_build_safe(node):
+            raise MemoryError(f"Individual memory limit reached when building: {self.operation.name}")
+
         # build the network
-        return self.operation.build(node)
+        network = self.operation.build(node)
+
+        # if set_memory_checkpoint:
+        #     self.limiter.reset_memory_checkpoint()
+
+        return network
 
     def copy(self):
         # own implementation of deepcopy
@@ -275,12 +291,8 @@ class DerivationTreeNode:
                 repr += brackets[0]
 
             # Append the string representation of each child
-            for child in self.children:
-                repr += f"{str(child)}, "
-
-            # Remove the trailing comma and space if there are children
-            if self.children:
-                repr = repr[:-2]
+            children_repr = ", ".join(str(child) for child in self.children)
+            repr += children_repr
 
             # Append the closing bracket
             if brackets:
@@ -319,6 +331,13 @@ class Stack:
 
     def is_empty(self):
         return self.stack == []
+
+    def is_completed(self):
+        """ Check if the stack only contain nodes that have been visited """
+        for node, visited in self.stack:
+            if not visited:
+                return False
+        return True
 
     def copy(self):
         # serialise the stack and then reconstruct it

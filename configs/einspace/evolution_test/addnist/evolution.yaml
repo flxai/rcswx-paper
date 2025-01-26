@@ -12,7 +12,7 @@ depth_limit: 20
 mem_limit: 4096
 # search strategy specific details
 regularised: True
-population_size: 100
+population_size: 10 # 100
 mutation_strategy: "random"
 mutation_rate: 1.0
 crossover_strategy: "two_point"
@@ -44,7 +44,7 @@ weight_decay: 0.0003
 
 # logging and plotting
 verbose_search: false
-verbose_eval: false
+verbose_eval: true
 visualise: false
 visualise_scale: 0.8
 print_after: 10000

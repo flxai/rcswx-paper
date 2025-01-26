@@ -35,17 +35,9 @@ class Sampler:
         elif self.mode == "recursive":
             raise NotImplementedError("Recursive mode not implemented")
 
-    def sample(self, input_params, operations=None, root=None, safe=True):
+    def sample(self, input_params, operations=None, root=None):
         # catch RuntimeErrors and MemoryErrors and try again
-        if safe:
-            try:
-                return self.__call__(input_params, operations, root)
-            except (RuntimeError, MemoryError) as e:
-                print(f"Error: {e}")
-                print("Trying again...")
-                return self.sample(input_params, operations)
-        else:
-            return self.__call__(input_params, operations, root)
+        return self.__call__(input_params, operations, root)
 
     def sample_iterative(self, input_params, operations=None, root=None):
         if root is None:
@@ -61,6 +53,8 @@ class Sampler:
         stack = Stack([(root.id, False)])
 
         while not stack.is_empty():
+            # print(f"Architecture so far: {root}")
+            if self.verbose: print(f"Architecture so far: {root}")
 
             if self.verbose: print(f"Stack: {stack}")
             node_id, visited = stack.pop()
@@ -88,6 +82,7 @@ class Sampler:
                         node,
                         verbose=self.verbose,
                     )
+                    if self.verbose: print(f"Selected operation: {operation}")
                     stack, max_id = node.initialise(
                         operation,
                         stack,
@@ -96,6 +91,8 @@ class Sampler:
                     for child in node.children:
                         if child.id not in self.nodes:
                             self.nodes[child.id] = child
+                    # print(f"Architecture so far: {root}")
+                    # print(len(stack.stack), len([a for a, v in stack.stack if not v]), len(operations), node.level, operation.name)
                 except OutOfOptionsError:
                     # get the precursor node, and remove the previously chosen operation from its options
                     node = node.get_precursor()
@@ -103,6 +100,7 @@ class Sampler:
                     stack, _ = node.memory
                     stack.restore(stack, node)
                     if self.verbose: print(f"Backtracked to node {node.id}")
+                    # print(f"Backtracked to node {node.id}")
         return root
 
 
@@ -194,8 +192,8 @@ class RandomSearch:
                     eval_duration = self.limiter.timer()
 
                     success = True
-                except (RuntimeError, MemoryError):
-                    print("GPU or RAM Memory error, trying again")
+                except (RuntimeError, MemoryError) as e:
+                    print(f"Error in sampling new architecture: {e}")
 
             self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
             print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")

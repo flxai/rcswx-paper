@@ -27,6 +27,7 @@ def inherit_aggregation(node):
         node.input_params["other_mode"] = node.parent.children[1].output_params["mode"]
 
 def give_back_default(node):
+    # print(f"Give back {node} with input params {node.input_params} and output params {node.output_params}")
     node.parent.output_params = node.output_params
 
 # modules
@@ -488,24 +489,17 @@ def build_im2col(kernel_size, stride, padding, node):
     )
 
 def infer_im2col(kernel_size, stride, padding, node):
-    m = layers.Im2Col(
-        input_shape=node.input_params["shape"],
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=padding,
-    )
-    shape = m(torch.randn(*node.input_params["shape"])).shape
-    # calculate the shape of the output tensor using the formula:
-    # batch (groups patch_size) kernel_squared_times_in_channels_divided_by_groups
-    # batch, channels, height, width = node.input_params["shape"]
-    # patch size is how many times the kernel fits in the height and width
-    # patch_size = (height - kernel_size + 2 * padding) // stride + 1
-    # shape = torch.Size([
-    #     batch,
-    #     patch_size,
-    #     channels * kernel_size * kernel_size,
-    # ])
-    last_im_shape = m.fold_output_shape
+    batch_size, channels, height, width = node.input_params["shape"]
+
+    output_height = (height + 2 * padding - kernel_size) // stride + 1
+    output_width = (width + 2 * padding - kernel_size) // stride + 1
+
+    patch_size = output_height * output_width
+    flattened_patch_size = kernel_size * kernel_size * channels
+
+    shape = torch.Size([batch_size, patch_size, flattened_patch_size])
+    last_im_shape = (output_height, output_width)
+
     return {
         "shape": shape,
         "other_shape": node.input_params["other_shape"],
@@ -541,9 +535,10 @@ def build_col2im(node):
     return m
 
 def infer_col2im(node):
-    m = layers.Col2Im()
-    m.output_shape = node.input_params["last_im_shape"]
-    shape = m(torch.randn(*node.input_params["shape"])).shape
+    batch_size, _, channels = node.input_params["shape"]
+    output_height, output_width = node.input_params["last_im_shape"]
+    shape = torch.Size([batch_size, channels, output_height, output_width])
+
     return {
         "shape": shape,
         "other_shape": node.input_params["other_shape"],
@@ -600,6 +595,42 @@ def linear(dim):
         build=partial(build_linear, dim),
         infer=partial(infer_linear, dim),
         valid=valid_linear,
+        inherit=[inherit_first_child],
+        give_back = [give_back_default],
+        type="terminal",
+        child_levels=[],
+    )
+
+def build_linear_x(dim_factor, node):
+    out_dim = int(node.input_params["shape"][-1] * dim_factor)
+    return layers.EinLinear(node.input_params["shape"][-1], out_dim)
+
+def infer_linear_x(dim_factor, node):
+    out_dim = int(node.input_params["shape"][-1] * dim_factor)
+    return {
+        "shape": torch.Size(
+            list(node.input_params["shape"][:-1]) + [out_dim]
+        ),
+        "other_shape": node.input_params["other_shape"],
+        "mode": node.input_params["mode"],
+        "other_mode": node.input_params["other_mode"],
+        "branching_factor": node.input_params["branching_factor"],
+        "last_im_shape": node.input_params["last_im_shape"],
+        "num_params": (
+            node.input_params["shape"][-1] *  out_dim + out_dim
+        ),
+    }
+
+def valid_linear_x(dim_factor, node):
+    out_dim = int(node.input_params["shape"][-1] * dim_factor)
+    return out_dim > 0 and node.input_params["shape"][-1] > 0
+
+def linear_x(dim_factor):
+    return Operation(
+        name=f"linear(x{dim_factor})",
+        build=partial(build_linear_x, dim_factor),
+        infer=partial(infer_linear_x, dim_factor),
+        valid=partial(valid_linear_x, dim_factor),
         inherit=[inherit_first_child],
         give_back = [give_back_default],
         type="terminal",
@@ -852,8 +883,8 @@ prerouting_fns = {
         permute([0, 2, 3, 1]),
         im2col(1, 1, 0),
         im2col(1, 2, 0),
-        im2col(3, 1, 0),
-        im2col(3, 2, 0),
+        im2col(3, 1, 1),
+        im2col(3, 2, 1),
         # im2col(5, 1, 2),
         # im2col(7, 1, 3),
         # im2col(7, 2, 3),

@@ -45,6 +45,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             "exploration_weight": args.exploration_weight,
             "incubent_type": args.incubent_type,
             "reward_mode": args.reward_mode,
+            "add_full_paths": args.add_full_paths,
         },
         "evolution": {
             "figures_path": join(
@@ -57,6 +58,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             ),
             "regularised": args.regularised,
             "population_size": args.population_size,
+            "architecture_seed": args.architecture_seed,
             "mutation_strategy": args.mutation_strategy,
             "mutation_rate": args.mutation_rate,
             "crossover_strategy": args.crossover_strategy,
@@ -64,6 +66,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             "selection_strategy": args.selection_strategy,
             "tournament_size": args.tournament_size,
             "elitism": args.elitism,
+            "n_tries": args.n_tries,
         }
     }
 
