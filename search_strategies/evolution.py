@@ -170,18 +170,16 @@ class Evolver(Sampler):
                 return self.two_point_crossover(parent1, parent2)
         return parent1
 
-    def one_point_crossover(self, parent1, parent2, filtered_ops=['branching']):
+    def one_point_crossover(self, parent1, parent2):
         # filter valid nodes from parents without copying
         valid_nodes1 = [
             node for node in parent1.root.serialise()
             if node.operation.type == 'nonterminal'
-            and node.operation.name not in filtered_ops
             and node.parent is not None  # Exclude root nodes
         ]
         valid_nodes2 = [
             node for node in parent2.root.serialise()
             if node.operation.type == 'nonterminal'
-            and node.operation.name not in filtered_ops
             and node.parent is not None  # Exclude root nodes
         ]
 
