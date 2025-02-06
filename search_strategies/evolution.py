@@ -149,9 +149,9 @@ class Evolver(Sampler):
         self.elitism = elitism
 
     def evolve(self, population):
-        # select the parents
+        # select the parents (and avoid incest)
         parent1 = self.select(population)
-        parent2 = self.select(population)
+        parent2 = self.select([individual for individual in population if individual != parent1])
         # crossover the parents
         child = self.crossover(parent1, parent2)
         # mutate the child
