@@ -15,7 +15,7 @@ regularised: True
 population_size: 10 # 100
 mutation_strategy: "random"
 mutation_rate: 1.0
-crossover_strategy: "two_point"
+crossover_strategy: "one_point"
 crossover_rate: 0.5
 selection_strategy: "tournament"
 tournament_size: 10
