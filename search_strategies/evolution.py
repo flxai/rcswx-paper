@@ -123,7 +123,7 @@ class Evolver(Sampler):
         limiter=None,
         mutation_strategy="random",
         mutation_rate=1.0,
-        crossover_strategy="two_point",
+        crossover_strategy="one_point",
         crossover_rate=0.5,
         selection_strategy="tournament",
         tournament_size=10,
@@ -150,18 +150,12 @@ class Evolver(Sampler):
 
     def evolve(self, population):
         # select the parents
-        # parent1 = self.select(population)
-        # parent2 = self.select(population)
+        parent1 = self.select(population)
+        parent2 = self.select(population)
         # crossover the parents
-        # child = self.crossover(parent1, parent2)
+        child = self.crossover(parent1, parent2)
         # mutate the child
-        # child = self.mutate(child)
-        # return child
-
-        # select the individual to mutate
-        individual = self.select(population)
-        # mutate the individual
-        child = self.mutate(individual)
+        child = self.mutate(child)
         return child.root
 
     def select(self, population):
@@ -177,24 +171,74 @@ class Evolver(Sampler):
         return parent1
 
     def one_point_crossover(self, parent1, parent2):
-        # select a random node from parent1
-        node1 = random.choice(parent1.root.serialise())
-        # select a random node from parent2
-        node2 = random.choice(parent2.root.serialise())
-        # create a new individual by swapping the subtrees
-        child = parent1.root.copy()
-        child.replace(node1, node2)
-        return child
+        # filter valid nodes from parents without copying
+        valid_nodes1 = [
+            node for node in parent1.root.serialise()
+            if node.operation.type == 'nonterminal'
+            and node.parent is not None  # Exclude root nodes
+        ]
+        valid_nodes2 = [
+            node for node in parent2.root.serialise()
+            if node.operation.type == 'nonterminal'
+            and node.parent is not None  # Exclude root nodes
+        ]
+
+        # ensure valid nodes for swapping
+        if not valid_nodes1 or not valid_nodes2:
+            raise ValueError("No valid nodes available for crossover.")
+
+        # randomly select nodes
+        node1 = random.choice(valid_nodes1)
+        node2 = random.choice(valid_nodes2)
+
+        # create deep copies of the parents for the children
+        child1_copy = deepcopy(parent1)
+        child2_copy = deepcopy(parent2)
+
+        # locate the corresponding nodes in the deep copies
+        node1_copy = next(
+            node for node in child1_copy.root.serialise() if node.id == node1.id
+        )
+        node2_copy = next(
+            node for node in child2_copy.root.serialise() if node.id == node2.id
+        )
+
+        # locate parent and index of the copied nodes
+        parent1_ref = node1_copy.parent
+        idx1 = node1_copy.parent.children.index(node1_copy)
+
+        parent2_ref = node2_copy.parent
+        idx2 = node2_copy.parent.children.index(node2_copy)
+
+        # swap children in the deep copies
+        parent1_ref.children[idx1] = node2_copy
+        parent2_ref.children[idx2] = node1_copy
+
+        # update parent references for swapped nodes
+        node1_copy.parent = parent2_ref
+        node2_copy.parent = parent1_ref
+
+        # create new individuals
+        child1_individual = Individual(
+            id=max(parent1.id, parent2.id) + 1,
+            parent_id=parent1.id,
+            root=child1_copy.root
+        )
+        child2_individual = Individual(
+            id=child1_individual.id + 1,
+            parent_id=parent2.id,
+            root=child2_copy.root
+        )
+
+        # TODO FIXME return both children?
+        # return [child1_individual, child2_individual]
+        return child1_individual
+
 
     def two_point_crossover(self, parent1, parent2):
-        # select a random node from parent1
-        node1 = random.choice(parent1.root.serialise())
-        # select a random node from parent2
-        node2 = random.choice(parent2.root.serialise())
-        # create a new individual by swapping the subtrees
-        child = parent1.root.copy()
-        child.replace(node1, node2)
-        return child
+        # TODO Equivalence between one-point and two-point strategies
+        # TODO Implement
+        return this_is_a_stub
 
     def mutate(self, individual):
         if random.random() < self.mutation_rate:
@@ -297,7 +341,7 @@ class Evolution:
             architecture_seed=None,
             mutation_strategy="random", # "random"
             mutation_rate=1.0, # probability of mutation
-            crossover_strategy="two_point", # "one_point" or "two_point"
+            crossover_strategy="one_point", # "one_point" or "two_point"
             crossover_rate=0.5, # probability of crossover
             selection_strategy="tournament", # "tournament" or "roulette"
             tournament_size=10, # only used if selection_strategy is "tournament"
