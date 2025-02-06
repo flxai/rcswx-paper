@@ -2,6 +2,9 @@
 figures/
 results/
 logs/
+configs/
+scripts/
+notebooks/
 
 # data
 data/

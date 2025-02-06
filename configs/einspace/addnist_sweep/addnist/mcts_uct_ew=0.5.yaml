@@ -10,8 +10,9 @@ time_limit: 300
 max_id_limit: 10000
 depth_limit: 20
 mem_limit: 4096
-aquisition_fn: "uct"
+acquisition_fn: "uct"
 exploration_weight: 0.5
+reward_mode: "sum"
 
 # evaluation details
 dataset: "addnist"

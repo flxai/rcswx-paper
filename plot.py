@@ -34,7 +34,8 @@ class Plotter:
     def plot_results(self, key, save_path):
         plt.figure(figsize=(6, 3))
         colors = sns.color_palette("tab10")
-        node_type = {"sequential": 0, "branching(2)": 1, "branching(4)": 2, "branching(8)": 3, "routing": 4, "computation": 5}
+        # node_type = {"sequential": 0, "branching(2)": 1, "branching(4)": 2, "branching(8)": 3, "routing": 4, "computation": 5}
+        node_type = {"sequential": 0, "sequential(4)": 1, "sequential(8)": 2, "branching(2)": 3, "branching(4)": 4, "branching(8)": 5, "routing": 6, "computation": 7}
         data = []
         for i, result in enumerate(self.results[key]):
             if len(result) == 2:

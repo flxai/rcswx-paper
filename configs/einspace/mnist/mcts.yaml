@@ -8,7 +8,7 @@ exploration_weight: 1.0
 backtrack: true
 mode: "iterative"
 time_limit: 300
-max_id_limit: 1000
+max_id_limit: 10000
 max_depth: 20
 
 # evaluation details

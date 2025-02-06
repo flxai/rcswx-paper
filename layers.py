@@ -59,6 +59,46 @@ class SequentialModule(nn.Module):
         return out
 
 
+class SequentialModule4(nn.Module):
+    """
+    Module that applies a sequence of functions to the input.
+
+    Attributes
+    ----------
+    fns : nn.Module
+        The function that is applied to the input four times
+    """
+
+    def __init__(self, fns):
+        super(SequentialModule4, self).__init__()
+        self.fns = nn.ModuleList(fns)
+
+    def forward(self, x):
+        for fn in self.fns:
+            x = fn(x)
+        return x
+
+
+class SequentialModule8(nn.Module):
+    """
+    Module that applies a sequence of functions to the input.
+
+    Attributes
+    ----------
+    fns : nn.Module
+        The function that is applied to the input eight times
+    """
+
+    def __init__(self, fns):
+        super(SequentialModule8, self).__init__()
+        self.fns = nn.ModuleList(fns)
+
+    def forward(self, x):
+        for fn in self.fns:
+            x = fn(x)
+        return x
+
+
 class BranchingModule(nn.Module):
     """
     Module that branches the input and then aggregates the outputs.
@@ -520,6 +560,78 @@ class CatTensors(nn.Module):
 
     def __repr__(self):
         return f"CatTensors(dim={self.dim})"
+
+
+class BroadcastTensors(nn.Module):
+    """
+    Merge two tensors in the most general way to a common output shape.
+    This is useful for broadcasting two tensors of different shapes into a single output.
+    This works with any two tensors that share a common prefix in their shapes and have 3 or 4 dimensions.
+    """
+
+    def __init__(self, mode="add", **kwargs):
+        super(BroadcastTensors, self).__init__()
+        self.mode = mode
+
+    def forward(self, tensors):
+        """
+        Align and merge two tensors using the specified mode: 'add', 'cat', or 'matmul'.
+        
+        Parameters:
+        - tensors: tuple of two tensors (a, b) to be merged.
+        
+        Returns:
+        - Merged tensor based on the mode.
+        """
+        a, b = tensors
+        assert a.dim() in [3, 4] and b.dim() in [3, 4], "Only 3D and 4D tensors are supported"
+
+        # Align dimensions by unsqueezing
+        while a.dim() < b.dim():
+            a = a.unsqueeze(1)
+        while b.dim() < a.dim():
+            b = b.unsqueeze(1)
+
+        # if any dimensions match but are out of order, permute the dimensions of b to match a
+        # print(f"Original shapes: {a.shape}, {b.shape}")
+        a_dims, b_dims = a.dim(), b.dim()
+        for i in range(1, a_dims):
+            for j in range(1, b_dims):
+                if a.shape[i] == b.shape[j] and a.shape[i] != b.shape[i] and a.shape[j] != b.shape[j]:
+                    # swap i and j of b
+                    dims = list(range(b.dim()))
+                    dims[i], dims[j] = dims[j], dims[i]
+                    b = b.permute(dims)
+        # print(f"Permuted shapes: {a.shape}, {b.shape}")
+
+        # if dimensions match, do nothing
+        # if a dimension is 1, expand it to match the other tensor
+        # if dimensions are different, reduce the dimensionality of the first tensor and then expand
+        a_shape, b_shape = list(a.shape), list(b.shape)
+        for i in range(1, min(a_dims, b_dims) + 1):
+            if a_shape[-i] == b_shape[-i]: # match found, do nothing
+                continue
+            elif a_shape[-i] == 1: # expand a to match b
+                a_shape[-i] = b_shape[-i]
+                a = a.expand(a_shape)
+            elif b_shape[-i] == 1:# expand b to match a
+                b_shape[-i] = a_shape[-i]
+                b = b.expand(b_shape)
+            else: # reduce the dimensionality of a and then expand to match b
+                b = b.mean(dim=-i, keepdim=True)
+                b_shape[-i] = a_shape[-i]
+                b = b.expand(b_shape)
+        if self.mode == "add":
+            return a + b
+        elif self.mode == "cat":
+            return torch.cat([a, b], dim=-1)
+        elif self.mode == "matmul":
+            # swap the final two dims
+            b = b.permute(list(range(b.dim() - 2)) + [-1, -2])
+            return torch.matmul(a, b)
+
+    def __repr__(self):
+        return f"BroadcastTensors(mode={self.mode})"
 
 
 class EinLinear(nn.Module):

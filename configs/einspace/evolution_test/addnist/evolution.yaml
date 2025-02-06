@@ -9,10 +9,13 @@ mode: "iterative"
 time_limit: 300
 max_id_limit: 10000
 depth_limit: 20
-mem_limit: 4096
+mem_limit: 8192
+individual_mem_limit: 1024
+batch_pass_limit: 0.1
 # search strategy specific details
 regularised: True
 population_size: 10 # 100
+architecture_seed: None
 mutation_strategy: "random"
 mutation_rate: 1.0
 crossover_strategy: "two_point"
@@ -20,6 +23,7 @@ crossover_rate: 0.5
 selection_strategy: "tournament"
 tournament_size: 10
 elitism: False
+n_tries: 10
 
 # evaluation details
 dataset: "addnist"

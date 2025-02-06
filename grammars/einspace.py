@@ -63,6 +63,88 @@ sequential_module = Operation(
     ],
 )
 
+def build_sequential_module_k(node, k):
+    print(f"Building sequential({k})")
+    # infer the output params of the whole subtree, recursively
+    def infer(node):
+        if not node.is_root():
+            node.inherit_input_params()
+        node.output_params = node.operation.infer(node)
+        for child in node.children:
+            infer(child)
+        node.give_back_output_params()
+        print(f"Inferred {node} with input params {node.input_params} and output params {node.output_params}")
+
+    modules = []
+    # store the original input params
+    if not node.is_root():
+        node.inherit_input_params()
+    original_input_params = node.input_params
+    for _ in range(k):
+        infer(node.children[0])
+        m = node.children[0].build(node.children[0])
+        modules.append(m)
+        # pass output params back in
+        node.input_params = node.output_params
+    print(modules)
+    # reset input params
+    node.input_params = original_input_params
+    return layers.SequentialModule4(
+        fns=modules,
+    )
+
+def build_sequential_module_4(node):
+    return build_sequential_module_k(node, 4)
+
+def infer_sequential_module_4(node):
+    return node.input_params
+
+def valid_sequential_module_4(node):
+    return True
+
+sequential_module_4 = Operation(
+    name="sequential(4)",
+    build=build_sequential_module_4,
+    infer=infer_sequential_module_4,
+    valid=valid_sequential_module_4,
+    inherit = [
+        inherit_first_child
+    ],
+    give_back = [
+        give_back_default
+    ],
+    type="nonterminal",
+    child_levels=[
+        "module"
+    ],
+)
+
+def build_sequential_module_8(node):
+    return build_sequential_module_k(node, 8)
+
+def infer_sequential_module_8(node):
+    return node.input_params
+
+def valid_sequential_module_8(node):
+    return True
+
+sequential_module_8 = Operation(
+    name="sequential(8)",
+    build=build_sequential_module_8,
+    infer=infer_sequential_module_8,
+    valid=valid_sequential_module_8,
+    inherit = [
+        inherit_first_child
+    ],
+    give_back = [
+        give_back_default
+    ],
+    type="nonterminal",
+    child_levels=[
+        "module"
+    ],
+)
+
 def build_branching_module_2(node):
     return layers.BranchingModule(
         branching_fn=node.children[0].build(node.children[0]),
@@ -292,6 +374,7 @@ def valid_group(branching_factor, dim, node):
     return (
         len(node.input_params["shape"]) > dim and
         node.input_params["shape"][dim] > 0 and
+        node.input_params["shape"][dim] >= branching_factor and
         node.input_params["shape"][dim] % branching_factor == 0
     )
 
@@ -425,6 +508,38 @@ def dot_product(scaled):
         build=partial(build_dot_product, scaled),
         infer=infer_dot_product,
         valid=valid_dot_product,
+        inherit=[inherit_first_child],
+        give_back = [give_back_default],
+        type="terminal",
+        child_levels=[],
+    )
+
+def build_broadcast(node):
+    return layers.BroadcastTensors(mode="add")
+
+def infer_broadcast(node):
+    a_shape, b_shape = node.input_params["shape"], node.input_params["other_shape"]
+    m = build_broadcast(node)
+    shape = m([torch.randn(*a_shape), torch.randn(*b_shape)]).shape
+    mode = {3: "col", 4: "im"}[len(shape)]
+    return {
+        "shape": shape,
+        "other_shape": node.parent.input_params["other_shape"],
+        "mode": mode,
+        "other_mode": node.parent.input_params["other_mode"],
+        "branching_factor": node.parent.input_params["branching_factor"],
+        "last_im_shape": node.input_params["last_im_shape"],
+    }
+
+def valid_broadcast(node):
+    return True
+
+def broadcast(branching_factor):
+    return Operation(
+        name=f"broadcast({branching_factor})",
+        build=build_broadcast,
+        infer=infer_broadcast,
+        valid=valid_broadcast,
         inherit=[inherit_first_child],
         give_back = [give_back_default],
         type="terminal",
@@ -740,26 +855,28 @@ modules_without_computation_module = {
     ],
 }
 
-modules = {
+deep_modules_without_computation_module = {
     "options": [
         sequential_module,
+        sequential_module_4,
+        sequential_module_8,
         branching_module_2,
         branching_module_4,
         branching_module_8,
         routing_module,
-        computation_module,
     ],
     "probs": [
-        0.226,
-        0.075,
-        0.075,
-        0.075,
-        0.226,
-        0.320,
+        0.111,
+        0.111,
+        0.111,
+        0.111,
+        0.111,
+        0.111,
+        0.333,
     ],
 }
 
-quick_modules = {
+modules = lambda prob: {
     "options": [
         sequential_module,
         branching_module_2,
@@ -769,12 +886,35 @@ quick_modules = {
         computation_module,
     ],
     "probs": [
-        0.033,
-        0.011,
-        0.011,
-        0.011,
-        0.033,
-        0.900,
+        (1 - prob) / 3,
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 3,
+        prob,
+    ],
+}
+
+deep_modules = lambda prob: {
+    "options": [
+        sequential_module,
+        sequential_module_4,
+        sequential_module_8,
+        branching_module_2,
+        branching_module_4,
+        branching_module_8,
+        routing_module,
+        computation_module,
+    ],
+    "probs": [
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 9,
+        (1 - prob) / 3,
+        prob,
     ],
 }
 
@@ -869,6 +1009,27 @@ aggregation_fns_8 = {
         0.25,
         0.25,
         0.25,
+    ],
+}
+
+aggregation_fns_with_broadcast_2 = {
+    "options": [
+        add(2),
+        cat(2, 1),
+        cat(2, 2),
+        cat(2, 3),
+        dot_product(scaled=False),
+        dot_product(scaled=True),
+        broadcast(2),
+    ],
+    "probs": [
+        0.143,
+        0.143,
+        0.143,
+        0.143,
+        0.143,
+        0.143,
+        0.143,
     ],
 }
 
@@ -968,7 +1129,7 @@ computation_fns = {
 
 grammar = {
     "network": modules_without_computation_module,
-    "module": modules,
+    "module": modules(0.32),
     "branching_fn_2": branching_fns_2,
     "branching_fn_4": branching_fns_4,
     "branching_fn_8": branching_fns_8,
@@ -982,7 +1143,7 @@ grammar = {
 
 quick_grammar = {
     "network": modules_without_computation_module,
-    "module": quick_modules,
+    "module": modules(0.9),
     "branching_fn_2": branching_fns_2,
     "branching_fn_4": branching_fns_4,
     "branching_fn_8": branching_fns_8,
@@ -991,5 +1152,63 @@ quick_grammar = {
     "aggregation_fn_8": aggregation_fns_8,
     "prerouting_fn": prerouting_fns,
     "postrouting_fn": postrouting_fns,
+    "computation_fn": computation_fns,
+}
+
+broadcast_grammar = {
+    "network": modules_without_computation_module,
+    "module": modules(0.32),
+    "branching_fn_2": branching_fns_2,
+    "branching_fn_4": branching_fns_4,
+    "branching_fn_8": branching_fns_8,
+    "aggregation_fn_2": aggregation_fns_with_broadcast_2,
+    "aggregation_fn_4": aggregation_fns_4,
+    "aggregation_fn_8": aggregation_fns_8,
+    "prerouting_fn": prerouting_fns,
+    "postrouting_fn": postrouting_fns,
+    "computation_fn": computation_fns,
+}
+
+deep_broadcast_grammar = {
+    "network": deep_modules_without_computation_module,
+    "module": deep_modules(0.32),
+    "branching_fn_2": branching_fns_2,
+    "branching_fn_4": branching_fns_4,
+    "branching_fn_8": branching_fns_8,
+    "aggregation_fn_2": aggregation_fns_with_broadcast_2,
+    "aggregation_fn_4": aggregation_fns_4,
+    "aggregation_fn_8": aggregation_fns_8,
+    "prerouting_fn": prerouting_fns,
+    "postrouting_fn": postrouting_fns,
+    "computation_fn": computation_fns,
+}
+
+quick_deep_broadcast_grammar = {
+    "network": {
+        "options": [
+            sequential_module,
+            sequential_module_4,
+            sequential_module_8,
+        ],
+        "probs": [
+            0.33,
+            0.33,
+            0.33
+        ],
+    },
+    "module": {
+        "options": [
+            sequential_module,
+            sequential_module_4,
+            sequential_module_8,
+            computation_module,
+        ],
+        "probs": [
+            0.2,
+            0.2,
+            0.2,
+            0.4,
+        ],
+    },
     "computation_fn": computation_fns,
 }
