@@ -1,7 +1,7 @@
 seed: 0
 
 # search details
-search_space: "einspace"
+search_space: "einspace_quick"
 search_strategy: "evolution"
 steps: 1000
 backtrack: true
@@ -9,13 +9,10 @@ mode: "iterative"
 time_limit: 300
 max_id_limit: 10000
 depth_limit: 20
-mem_limit: 8192
-individual_mem_limit: 1024
-batch_pass_limit: 0.1
+mem_limit: 4096
 # search strategy specific details
 regularised: True
 population_size: 10 # 100
-architecture_seed: None
 mutation_strategy: "random"
 mutation_rate: 1.0
 crossover_strategy: "one_point"
@@ -23,7 +20,6 @@ crossover_rate: 0.5
 selection_strategy: "tournament"
 tournament_size: 10
 elitism: False
-n_tries: 10
 
 # evaluation details
 dataset: "addnist"

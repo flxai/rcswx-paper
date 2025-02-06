@@ -16,6 +16,16 @@ from visualise import visualise_derivation_tree
 from utils import load_config, get_exp_path
 
 
+def compile_fn(node, args):
+    backbone = node.build(node, set_memory_checkpoint=True)
+    return Network(
+        backbone,
+        node.output_params["shape"],
+        args.num_classes,
+        vars(args)
+    ).to(args.device)
+
+
 class Plotter:
     def __init__(self, results):
         if results is None:

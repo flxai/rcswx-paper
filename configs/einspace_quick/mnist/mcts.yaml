@@ -2,34 +2,20 @@ seed: 0
 
 # search details
 search_space: "einspace"
-search_strategy: "evolution"
+search_strategy: "mcts"
 steps: 1000
+exploration_weight: 1.0
 backtrack: true
 mode: "iterative"
 time_limit: 300
-max_id_limit: 10000
-depth_limit: 20
-mem_limit: 8192
-individual_mem_limit: 1024
-batch_pass_limit: 0.1
-# search strategy specific details
-regularised: True
-population_size: 10 # 100
-architecture_seed: None
-mutation_strategy: "random"
-mutation_rate: 1.0
-crossover_strategy: "one_point"
-crossover_rate: 0.5
-selection_strategy: "tournament"
-tournament_size: 10
-elitism: False
-n_tries: 10
+max_id_limit: 1000
+max_depth: 20
 
 # evaluation details
-dataset: "addnist"
+dataset: "mnist"
 load_in_gpu: True
-num_classes: 20
-channels: 3
+num_classes: 10
+channels: 1
 image_size:
   - 28
   - 28
@@ -48,10 +34,10 @@ weight_decay: 0.0003
 
 # logging and plotting
 verbose_search: false
-verbose_eval: true
+verbose_eval: false
 visualise: false
 visualise_scale: 0.8
-print_after: 10000
+print_after: 1000
 
 # saving results and figures
 figures_path: "figures"
