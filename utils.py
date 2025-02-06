@@ -8,6 +8,17 @@ import sys
 import gc
 from pympler import asizeof, summary
 
+import io
+import torch
+from pickle import Unpickler
+
+
+class CPU_Unpickler(Unpickler):
+    def find_class(self, module, name):
+        if module == 'torch.storage' and name == '_load_from_bytes':
+            return lambda b: torch.load(io.BytesIO(b), map_location='cpu')
+        else: return super().find_class(module, name)
+
 
 def load_config(args):
     # load yaml file and overwrite anything in it
@@ -90,7 +101,12 @@ class Limiter:
         self.timer = Timer()
         self.memory_checkpoint = None
 
-        self.batch = batch
+        if batch is not None:
+            self.batch_shape = batch.shape
+            self.device = batch.device
+        else:
+            self.batch_shape = None
+            self.device = None
         self.compile_fn = compile_fn
         self.n_batch_passes = n_batch_passes
 
@@ -154,7 +170,7 @@ class Limiter:
         """
         Check if the limits have been reached.
         """
-        if self.batch is None:
+        if self.batch_shape is None:
             assert self.compile_fn is not None, "Compile function must be provided if limiting batch pass time"
             return True
 
@@ -176,7 +192,7 @@ class Limiter:
         timer = Timer()
         for _ in range(self.n_batch_passes):
             timer.start()
-            model(self.batch)
+            model(torch.randn(self.batch_shape).to(self.device))
             dur += timer()
 
         duration = dur / self.n_batch_passes

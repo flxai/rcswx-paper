@@ -19,20 +19,19 @@ from search_state import Stack, DerivationTreeNode
 from visualise import visualise_derivation_tree
 from visualise import visualise_search_tree_2 as visualise_search_tree
 from plot import Plotter
+from utils import CPU_Unpickler
 
 from rich import print
 import math, random
 from tqdm import tqdm
 from scipy.stats import norm
 
+from guppy import hpy
+
 ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
 
 
 class TimeLimitExceededError(Exception):
-    pass
-
-
-class SearchCompletedError(Exception):
     pass
 
 
@@ -45,7 +44,6 @@ class SearchTreeNode:
             self,
             id,
             pcfg,
-            node,
             operation,
             stack,
             max_id,
@@ -58,7 +56,6 @@ class SearchTreeNode:
         ):
         self.id = id
         self.pcfg = pcfg
-        self.node = node
         self.operation = operation
         self.stack = stack
         self.max_id = max_id
@@ -76,11 +73,10 @@ class SearchTreeNode:
         return self.id == other.id
 
     def __str__(self):
-        return f"SearchTreeNode(id={self.id}, node={self.node})"
+        return f"SearchTreeNode(id={self.id}, operation={self.operation.name if self.operation else None})"
 
     def __repr__(self):
         return str(self)
-
 
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
@@ -164,7 +160,7 @@ class MCTS:
         self.rewards = []
         self.iteration = 0
         self.search_tree_max_id = initial_search_tree_max_id
-        root = DerivationTreeNode(
+        self.root = DerivationTreeNode(
             initial_derivation_tree_max_id,
             "network",
             input_params=self.input_params,
@@ -173,9 +169,8 @@ class MCTS:
         self.search_tree_root = SearchTreeNode(
             id=self.search_tree_max_id,
             pcfg=self.pcfg,
-            node=root,
             operation=None,
-            stack=Stack([(root, False)]),
+            stack=Stack([(self.root, False)]),
             max_id=1,
             time_limit=self.time_limit,
             max_id_limit=self.max_id_limit,
@@ -212,32 +207,33 @@ class MCTS:
         print(f"Steps: {steps}")
         print("-----------------------")
 
-        try:
-            if self.iteration == 0:
-                # expand the initial search tree from the root
-                print("Initialising search tree: expanding children of root node")
-                # start a timer for the first expansion
-                self.limiter.timer.start()
-                self._expand_path([self.search_tree_root])
+        if self.iteration == 0:
+            # expand the initial search tree from the root
+            print("Initialising search tree: expanding children of root node")
+            # start a timer for the first expansion
+            self.limiter.timer.start()
+            self._expand_path([self.search_tree_root])
 
-            # iterate through the search tree, expanding and simulating
-            for iteration in tqdm(range(self.iteration, steps), desc="MCTS", initial=self.iteration, total=steps):
-                # set the memory checkpoint
-                self.limiter.set_memory_checkpoint()
-                print(f"Memory checkpoint: {self.limiter.memory_checkpoint} MB")
+        # iterate through the search tree, expanding and simulating
+        for iteration in tqdm(range(self.iteration, steps), desc="MCTS", initial=self.iteration, total=steps):
+            # set the memory checkpoint
+            self.limiter.set_memory_checkpoint()
+            print(f"Memory checkpoint: {self.limiter.memory_checkpoint} MB")
 
-                # do a single iteration of MCTS
-                end_node, path, reward = self.do_rollout(self.search_tree_root, iteration)
+            # do a single iteration of MCTS
+            end_node, path, reward = self.do_rollout(self.search_tree_root, iteration)
 
-                # save to results
-                self.save_results(iteration)
+            # save to results
+            self.save_results(iteration)
 
-                self.plot(end_node, path, reward, iteration)
+            self.plot(end_node, path, reward, iteration)
 
-                # Force garbage collection
-                gc.collect()
-        except SearchCompletedError as e:
-            print(f"Search completed. Reason: {e}")
+            # Force garbage collection
+            print(f"Performing Garbage Collection")
+            gc.collect()
+            for obj in gc.garbage:
+                if isinstance(obj, SearchTreeNode):
+                    print(f"\tFound cyclic reference: {obj}")
 
     def do_rollout(self, node, iteration):
         "Make the tree one layer bigger. (Train for one iteration.)"
@@ -256,6 +252,8 @@ class MCTS:
             try:
                 # print("Rollout")
                 self.limiter.summarise_memory()
+                h = hpy()
+                print(h.heap())
                 # print some more memory stats
                 print(f"Memory of self.nodes: {self.total_memory(self.nodes) / 1e6:.2f} MB")
                 print(f"Memory of self.children: {self.total_memory(self.children) / 1e6:.2f} MB")
@@ -309,7 +307,7 @@ class MCTS:
                 if self.verbose: print(f"Finding child for {serialised_architecture[i]}")
                 if self.verbose: print(f"Children: {self.children[path[-1]]}")
                 for child in self.children[path[-1]]:
-                    if child.node.operation == serialised_architecture[i].operation:
+                    if child.operation == serialised_architecture[i].operation:
                         path.append(child)
                         if self.verbose: print(f"Extended path: {path}")
                         break
@@ -361,141 +359,140 @@ class MCTS:
         This method visits each node in the path and keeps track of the stack of what nodes to visit next
         It ends by visiting the last node in the path and expanding it, thereby adding children to it (SearchTreeNodes)
         """
-        if isinstance(path[0], DerivationTreeNode):
+        success = False
+        while not success:
             operations = [node.operation for node in path if node.operation]
-        elif isinstance(path[0], SearchTreeNode):
-            operations = [node.node.operation for node in path if node.node.operation]
-        else:
-            raise ValueError("Invalid path. Must be a list of DerivationTreeNodes or SearchTreeNodes")
 
-        if self.verbose: print("Expanding path")
-        for i, node in enumerate(path):
-            if self.verbose: print(f"\t{node}")
-        if self.verbose: print("Operations")
-        for i, operation in enumerate(operations):
-            if self.verbose: print(f"\t{operation.name}")
-        root = DerivationTreeNode(
-            id=1,
-            level="network",
-            input_params=self.input_params,
-            limiter=self.pcfg.limiter,
-        )
-        self.nodes = {root.id: root}
-
-        max_id = root.id
-        stack = Stack([(root.id, False)])
-
-        while not stack.is_empty() and len(operations) > 0:
-            if self.verbose: print(f"Stack: {stack}")
-            if self.verbose: print(f"Operations")
+            if self.verbose: print("Expanding path")
+            for i, node in enumerate(path):
+                if self.verbose: print(f"\t{node}")
+            if self.verbose: print("Operations")
             for i, operation in enumerate(operations):
                 if self.verbose: print(f"\t{operation.name}")
+            root = DerivationTreeNode(
+                id=1,
+                level="network",
+                input_params=self.input_params,
+                limiter=self.pcfg.limiter,
+            )
+            self.nodes = {root.id: root}
 
+            max_id = root.id
+            stack = Stack([(root.id, False)])
+
+            while not stack.is_empty() and len(operations) > 0:
+                if self.verbose: print(f"Stack: {stack}")
+                if self.verbose: print(f"Operations")
+                for i, operation in enumerate(operations):
+                    if self.verbose: print(f"\t{operation.name}")
+
+                node_id, visited = stack.pop()
+                node = self.nodes[node_id]
+                if self.verbose: print(f"Node: {node.id}, visited: {visited}")
+                if self.verbose: print(f"Node: {node}")
+
+                if visited:
+                    # Propagate the output params to the parent
+                    node.give_back_output_params()
+                    if not node.is_root():
+                        if self.verbose: print(f"Propagated output params from node {node.id} to parent {node.parent.id}")
+                        if self.verbose: print(f"Output params for node: {node.parent.id}, {node.parent.output_params}")
+                else:
+                    stack.append((node.id, True))
+                    if not node.is_root():
+                        # inherit the input params from the parent
+                        node.inherit_input_params()
+                        if self.verbose: print(f"Inherited input params from parent {node.parent.id} to node {node.id}")
+                        if self.verbose: print(f"Input params for node: {node.id}, {node.input_params}")
+                    if self.verbose: print(f"Sampling node {node.id}")
+                    # select operation and initialise the node, children etc.
+                    operation = operations.pop(0)
+                    stack, max_id = node.initialise(
+                        operation,
+                        stack,
+                        max_id,
+                        id_stack=True,
+                    )
+                    if self.verbose: print(f"Initialised node {node.id} with operation {operation}")
+                    if self.verbose: print(f"New stack: {stack}")
+                    for child in node.children:
+                        if child.id not in self.nodes:
+                            self.nodes[child.id] = child
+            # if the stack is empty, we have reached the end of the path
+            if stack.is_empty() or stack.is_completed():
+                print("Reached a terminal node when expanding. Trying again...")
+                print(f"Stack: {stack}")
+                continue # try again
+
+            if self.verbose: print("Expanding the last node in the path")
+            # expand the last node in the path
+            if self.verbose: print(f"Stack: {stack}")
             node_id, visited = stack.pop()
             node = self.nodes[node_id]
-            if self.verbose: print(f"Node: {node.id}, visited: {visited}")
-            if self.verbose: print(f"Node: {node}")
-
-            if visited:
+            if self.verbose: print(f"Node: {node_id}, visited: {visited}")
+            while visited:
                 # Propagate the output params to the parent
                 node.give_back_output_params()
                 if not node.is_root():
                     if self.verbose: print(f"Propagated output params from node {node.id} to parent {node.parent.id}")
                     if self.verbose: print(f"Output params for node: {node.parent.id}, {node.parent.output_params}")
-            else:
-                stack.append((node.id, True))
-                if not node.is_root():
-                    # inherit the input params from the parent
-                    node.inherit_input_params()
-                    if self.verbose: print(f"Inherited input params from parent {node.parent.id} to node {node.id}")
-                    if self.verbose: print(f"Input params for node: {node.id}, {node.input_params}")
-                if self.verbose: print(f"Sampling node {node.id}")
-                # select operation and initialise the node, children etc.
-                operation = operations.pop(0)
-                stack, max_id = node.initialise(
-                    operation,
-                    stack,
-                    max_id,
-                    id_stack=True,
-                )
-                if self.verbose: print(f"Initialised node {node.id} with operation {operation}")
-                if self.verbose: print(f"New stack: {stack}")
-                for child in node.children:
-                    if child.id not in self.nodes:
-                        self.nodes[child.id] = child
-        # if the stack is empty, we have reached the end of the path
-        if stack.is_empty() or stack.is_completed():
-            raise SearchCompletedError("A terminal node was selected, meaning the search cannot continue.")
+                if self.verbose: print(f"Stack: {stack}")
+                node_id, visited = stack.pop()
+                node = self.nodes[node_id]
+                if self.verbose: print(f"Node: {node_id}, visited: {visited}")
+            if self.verbose: print(f"Node: {node}")
 
-        if self.verbose: print("Expanding the last node in the path")
-        # expand the last node in the path
-        if self.verbose: print(f"Stack: {stack}")
-        node_id, visited = stack.pop()
-        node = self.nodes[node_id]
-        if self.verbose: print(f"Node: {node_id}, visited: {visited}")
-        while visited:
-            # Propagate the output params to the parent
-            node.give_back_output_params()
             if not node.is_root():
-                if self.verbose: print(f"Propagated output params from node {node.id} to parent {node.parent.id}")
-                if self.verbose: print(f"Output params for node: {node.parent.id}, {node.parent.output_params}")
-            if self.verbose: print(f"Stack: {stack}")
-            node_id, visited = stack.pop()
-            node = self.nodes[node_id]
-            if self.verbose: print(f"Node: {node_id}, visited: {visited}")
-        if self.verbose: print(f"Node: {node}")
+                # inherit the input params from the parent
+                node.inherit_input_params()
+                if self.verbose: print(f"Inherited input params from parent {node.parent.id} to node {node.id}")
+                if self.verbose: print(f"Input params for node: {node.id}, {node.input_params}")
+            if self.verbose: print(f"Sampling node {node.id}")
 
-        if not node.is_root():
-            # inherit the input params from the parent
-            node.inherit_input_params()
-            if self.verbose: print(f"Inherited input params from parent {node.parent.id} to node {node.id}")
-            if self.verbose: print(f"Input params for node: {node.id}, {node.input_params}")
-        if self.verbose: print(f"Sampling node {node.id}")
-
-        # find the available and filtered options for the current node
-        options, probs = self.pcfg.get_available_options(node, verbose=self.verbose)
-        options, _ = self.pcfg.filter_options(
-            node,
-            options,
-            probs,
-            verbose=self.verbose
-        )
-        if self.verbose: print(f"Available options of node {node.id}: {[op.name for op in options]}")
-        
-        children = []
-        for i, operation in enumerate(options):
-            child_node, child_stack, child_max_id = self.step(
-                node=deepcopy(node),
-                visited=visited,
-                stack=deepcopy(stack),
-                max_id=max_id,
-                operation=operation,
+            # find the available and filtered options for the current node
+            options, probs = self.pcfg.get_available_options(node, verbose=self.verbose)
+            options, _ = self.pcfg.filter_options(
+                node,
+                options,
+                probs,
+                verbose=self.verbose
             )
+            if self.verbose: print(f"Available options of node {node.id}: {[op.name for op in options]}")
+            
+            children = []
+            for i, operation in enumerate(options):
+                child_node, child_stack, child_max_id = self.step(
+                    node=deepcopy(node),
+                    visited=visited,
+                    stack=deepcopy(stack),
+                    max_id=max_id,
+                    operation=operation,
+                )
 
-            child = SearchTreeNode(
-                id=self.search_tree_max_id + i + 1,
-                pcfg=self.pcfg,
-                node=child_node,
-                operation=child_node.operation,
-                stack=child_stack,
-                max_id=child_max_id,
-                time_limit=self.time_limit,
-                max_id_limit=self.max_id_limit,
-                depth_limit=self.depth_limit,
-                mem_limit=self.mem_limit,
-                verbose=self.verbose,
-                backtrack=self.backtrack
-            )
-            children.append(child)
-            if self.verbose: print(f"Child node {child}\nwith parent {child.node.parent}")
-            if self.verbose: print(f"Stack of child node {child.id}: {child.stack}")
-        if leaf is None:
-            leaf = path[-1]
-        if leaf not in self.children:
-            self.search_tree_max_id += len(children)
-            self.children[leaf] = children
-        if self.verbose: print(f"Expanded node {leaf}\nwith children\n{self.children[leaf]}")
-        self.nodes = {}
+                child = SearchTreeNode(
+                    id=self.search_tree_max_id + i + 1,
+                    pcfg=self.pcfg,
+                    operation=child_node.operation,
+                    stack=child_stack,
+                    max_id=child_max_id,
+                    time_limit=self.time_limit,
+                    max_id_limit=self.max_id_limit,
+                    depth_limit=self.depth_limit,
+                    mem_limit=self.mem_limit,
+                    verbose=self.verbose,
+                    backtrack=self.backtrack
+                )
+                children.append(child)
+                if self.verbose: print(f"Child node {child}\nwith parent {child_node.parent}")
+                if self.verbose: print(f"Stack of child node {child.id}: {child.stack}")
+            if leaf is None:
+                leaf = path[-1]
+            if leaf not in self.children:
+                self.search_tree_max_id += len(children)
+                self.children[leaf] = children
+            if self.verbose: print(f"Expanded node {leaf}\nwith children\n{self.children[leaf]}")
+            self.nodes = {}
+            success = True
 
     def step(self, node, visited, stack, max_id, operation):
         """
@@ -527,7 +524,7 @@ class MCTS:
 
     def _simulate(self, path):
         "Returns the reward for a random simulation (to completion) of `node`"
-        operations = [node.node.operation for node in path if node.node.operation]
+        operations = [node.operation for node in path if node.operation]
         root = self.sampler.sample(self.input_params, operations)
         return root
 
@@ -661,7 +658,7 @@ class MCTS:
         path = join(self.results_path, "search_results.pkl")
         if exists(path):
             with open(path, "rb") as f:
-                data = pickle.load(f)
+                data = CPU_Unpickler(f).load()
                 self.Q = data["Q"]
                 self.N = data["N"]
                 self.children = data["children"]

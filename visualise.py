@@ -119,7 +119,7 @@ def visualise_search_tree(root, children, Q, N, path=None, scale=1, layout="twop
                 op_name=root.operation.name if root.operation else "",
                 score=Q[root],
                 visits=N[root],
-                color=colours[root.node.level] if root.id > 1 else colours["root"],
+                # color=colours[root.node.level] if root.id > 1 else colours["root"],
             )
             if root in children:
                 for child in children[root]:
@@ -181,7 +181,7 @@ def visualise_search_tree_2(root, children, Q, N, path=None, score_fn=None, scal
                 op_name=node.operation.name if node.operation else "",
                 score=score_fn(node, parent) if parent is not None and score_fn is not None and (node in children) and N[node] != 0 else 0,
                 visits=N[node],
-                color=colours[node.node.level] if node.id > 1 else colours["root"],
+                # color=colours[node.node.level] if node.id > 1 else colours["root"],
             )
             if node in children:
                 for child in children[node]:

@@ -167,6 +167,10 @@ class Evolver(Sampler):
     def select(self, population):
         if self.selection_strategy == "tournament":
             return population.tournament_selection(self.tournament_size, key=lambda x: x.accuracy)
+        elif self.selection_strategy == "first":
+            return population[0]
+        elif self.selection_strategy == "last":
+            return population[-1]
 
     def crossover(self, parent1, parent2):
         if random.random() < self.crossover_rate:
@@ -199,18 +203,23 @@ class Evolver(Sampler):
     def mutate(self, individual):
         if random.random() < self.mutation_rate:
             if self.mutation_strategy == "random":
-                return self.random_mutation(individual)
+                return self.random_mutation(individual, allowed_types=["terminal", "nonterminal"])
+            elif self.mutation_strategy == "random_terminal":
+                return self.random_mutation(individual, allowed_types=["terminal"])
         return individual
 
-    def random_mutation(self, individual):
+    def random_mutation(self, individual, allowed_types="all"):
         success = False
         while not success:
             try:
                 print(f"Mutating architecture:")
                 root = deepcopy(individual.root)
                 print(f"{root}")
+                nodes = root.serialise()
+                allowed_nodes = [node for node in nodes if node.operation.type in allowed_types]
+                print(allowed_nodes)
                 # choose a random node to mutate
-                node = random.choice(root.serialise())
+                node = random.choice(allowed_nodes)
                 print(f"Mutating node:")
                 print(f"{node}")
                 # mutate the node
@@ -364,7 +373,7 @@ class Evolution:
 
         # fix for the clock
         self.limiter.timer.start()
-        print(f"Initialised MCTS at {self.limiter.timer.start_time}")
+        print(f"Initialised Evolution at {self.limiter.timer.start_time}")
 
     def set_rng_state(self, seed=None, state=None):
         if state:
@@ -441,9 +450,10 @@ class Evolution:
         print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
         print(f"Architecture: {root}")
 
-        # remove the oldest individual from the population
-        if len(self.population) >= self.population_size:
-            self.population.popleft()
+        if self.regularised:
+            # remove the oldest individual from the population
+            if len(self.population) >= self.population_size:
+                self.population.popleft()
 
         # save the results
         self.save_results(iteration)
