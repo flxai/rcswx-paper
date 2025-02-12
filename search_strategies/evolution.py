@@ -13,6 +13,8 @@ from baselines import build_baseline, baseline_dict
 from visualise import visualise_derivation_tree
 from plot import Plotter
 
+import torch
+
 
 class Individual(object):
     """A class representing a model containing an architecture, its modules and its accuracy."""
@@ -68,6 +70,9 @@ class Population(deque):
     def popleft(self):
         individual = self.individuals.pop(0)
         individual.alive = False
+
+    def without(self, individual):
+        return Population([i for i in self.individuals if i != individual])
 
     def max(self, key):
         return max(self.individuals, key=key)
@@ -151,11 +156,16 @@ class Evolver(Sampler):
     def evolve(self, population):
         # select the parents (and avoid incest)
         parent1 = self.select(population)
-        parent2 = self.select([individual for individual in population if individual != parent1])
+        parent2 = self.select(population.without(parent1))
+        print(f"Parent 1: {parent1.accuracy}, {parent1.root}")
+        if self.crossover_rate > 0:
+            print(f"Parent 2: {parent2.accuracy}, {parent2.root}")
         # crossover the parents
         child = self.crossover(parent1, parent2)
+        print(f"Child: {child.root}")
         # mutate the child
         child = self.mutate(child)
+        print(f"Mutated child: {child.root}")
         return child.root
 
     def select(self, population):
@@ -175,68 +185,108 @@ class Evolver(Sampler):
         return parent1
 
     def one_point_crossover(self, parent1, parent2):
-        # filter valid nodes from parents without copying
-        valid_nodes1 = [
-            node for node in parent1.root.serialise()
-            if node.operation.type == 'nonterminal'
-            and node.parent is not None  # Exclude root nodes
-        ]
-        valid_nodes2 = [
-            node for node in parent2.root.serialise()
-            if node.operation.type == 'nonterminal'
-            and node.parent is not None  # Exclude root nodes
-        ]
+        successes = [False, False]
+        tries = 0
+        while not any(successes):
+            if tries > 10:
+                raise RuntimeError("Crossover failed to generate valid children.")
+            # filter valid nodes from parents without copying
+            valid_nodes1 = [
+                node for node in parent1.root.serialise()
+                if node.operation.type == 'nonterminal'
+                and node.parent is not None  # Exclude root nodes
+            ]
+            valid_nodes2 = [
+                node for node in parent2.root.serialise()
+                if node.operation.type == 'nonterminal'
+                and node.parent is not None  # Exclude root nodes
+            ]
 
-        # ensure valid nodes for swapping
-        if not valid_nodes1 or not valid_nodes2:
-            raise ValueError("No valid nodes available for crossover.")
+            # ensure valid nodes for swapping
+            if not valid_nodes1 or not valid_nodes2:
+                raise ValueError("No valid nodes available for crossover.")
 
-        # randomly select nodes
-        node1 = random.choice(valid_nodes1)
-        node2 = random.choice(valid_nodes2)
+            # randomly select nodes
+            node1 = random.choice(valid_nodes1)
+            node2 = random.choice(valid_nodes2)
 
-        # create deep copies of the parents for the children
-        child1_copy = deepcopy(parent1)
-        child2_copy = deepcopy(parent2)
+            # create deep copies of the parents for the children
+            child1_copy = deepcopy(parent1)
+            child2_copy = deepcopy(parent2)
 
-        # locate the corresponding nodes in the deep copies
-        node1_copy = next(
-            node for node in child1_copy.root.serialise() if node.id == node1.id
-        )
-        node2_copy = next(
-            node for node in child2_copy.root.serialise() if node.id == node2.id
-        )
+            # locate the corresponding nodes in the deep copies
+            node1_copy = next(
+                node for node in child1_copy.root.serialise() if node.id == node1.id
+            )
+            node2_copy = next(
+                node for node in child2_copy.root.serialise() if node.id == node2.id
+            )
 
-        # locate parent and index of the copied nodes
-        parent1_ref = node1_copy.parent
-        idx1 = node1_copy.parent.children.index(node1_copy)
+            # locate parent and index of the copied nodes
+            parent1_ref = node1_copy.parent
+            idx1 = node1_copy.parent.children.index(node1_copy)
 
-        parent2_ref = node2_copy.parent
-        idx2 = node2_copy.parent.children.index(node2_copy)
+            parent2_ref = node2_copy.parent
+            idx2 = node2_copy.parent.children.index(node2_copy)
 
-        # swap children in the deep copies
-        parent1_ref.children[idx1] = node2_copy
-        parent2_ref.children[idx2] = node1_copy
+            # swap children in the deep copies
+            parent1_ref.children[idx1] = node2_copy
+            parent2_ref.children[idx2] = node1_copy
 
-        # update parent references for swapped nodes
-        node1_copy.parent = parent2_ref
-        node2_copy.parent = parent1_ref
+            # update parent references for swapped nodes
+            node1_copy.parent = parent2_ref
+            node2_copy.parent = parent1_ref
+
+            # re-infer all params
+            try:
+                self.limiter.timer.start()
+                child1 = self.sample(
+                    input_params=child1_copy.root.input_params,
+                    root=child1_copy.root,
+                    operations=[
+                        node.operation
+                        for node in child1_copy.root.serialise()
+                    ],
+                )
+                successes[0] = True
+            except:
+                pass
+            try:
+                self.limiter.timer.start()
+                child2 = self.sample(
+                    input_params=child2_copy.root.input_params,
+                    root=child2_copy.root,
+                    operations=[
+                        node.operation
+                        for node in child2_copy.root.serialise()
+                    ],
+                )
+                successes[1] = True
+            except:
+                pass
+            tries += 1
 
         # create new individuals
-        child1_individual = Individual(
-            id=max(parent1.id, parent2.id) + 1,
-            parent_id=parent1.id,
-            root=child1_copy.root
-        )
-        child2_individual = Individual(
-            id=child1_individual.id + 1,
-            parent_id=parent2.id,
-            root=child2_copy.root
-        )
+        if successes[0]:
+            child1_individual = Individual(
+                id=max(parent1.id, parent2.id) + 1,
+                parent_id=parent1.id,
+                root=child1
+            )
+        if successes[1]:
+            child2_individual = Individual(
+                id=max(parent1.id, parent2.id) + 1 if not successes[0] else child1_individual.id + 1,
+                parent_id=parent2.id,
+                root=child2
+            )
 
         # TODO FIXME return both children?
-        # return [child1_individual, child2_individual]
-        return child1_individual
+        # if successes[0] and successes[1]:
+        #     return [child1_individual, child2_individual]
+        if successes[0]:
+            return child1_individual
+        elif successes[1]:
+            return child2_individual
 
 
     def two_point_crossover(self, parent1, parent2):
@@ -256,16 +306,16 @@ class Evolver(Sampler):
         success = False
         while not success:
             try:
-                print(f"Mutating architecture:")
+                # print(f"Mutating architecture:")
                 root = deepcopy(individual.root)
-                print(f"{root}")
+                # print(f"{root}")
                 nodes = root.serialise()
                 allowed_nodes = [node for node in nodes if node.operation.type in allowed_types]
-                print(allowed_nodes)
+                # print(allowed_nodes)
                 # choose a random node to mutate
                 node = random.choice(allowed_nodes)
-                print(f"Mutating node:")
-                print(f"{node}")
+                # print(f"Mutating node:")
+                # print(f"{node}")
                 # mutate the node
                 root = self.mutate_node(root, node)
                 individual = Individual(
@@ -291,23 +341,23 @@ class Evolver(Sampler):
                     "probs": probs,
                 }
             node.limit_options(node.operation)
-            print(f"Available options: {[op.name for op in node.available_rules['options']]}")
+            # print(f"Available options: {[op.name for op in node.available_rules['options']]}")
         # sample a new subtree rooted at this node
         self.limiter.timer.start()
         new_node = self.sample(input_params=node.input_params, root=node)
-        print(f"New subtree:")
-        print(f"{new_node}")
+        # print(f"New subtree:")
+        # print(f"{new_node}")
         # replace the old node with the new subtree
         node.replace(new_node)
-        print(f"Mutated architecture:")
-        print(f"{root}")
+        # print(f"Mutated architecture:")
+        # print(f"{root}")
         # test to see if the new architecture is valid
         # this will run through the entire network with the existing operations
         # and raise an error if the network is invalid
-        print(f"Testing mutated architecture:")
-        print(f"Inputs to sample: {root.input_params}")
-        print(f"Root: {root}")
-        print(f"Operations: {[node.operation.name for node in root.serialise()]}")
+        # print(f"Testing mutated architecture:")
+        # print(f"Inputs to sample: {root.input_params}")
+        # print(f"Root: {root}")
+        # print(f"Operations: {[node.operation.name for node in root.serialise()]}")
         self.limiter.timer.start()
         self.sample(
             input_params=root.input_params,
@@ -317,9 +367,9 @@ class Evolver(Sampler):
                 for node in root.serialise()
             ],
         )
-        print(f"Mutation successful")
-        print(f"New architecture:")
-        print(f"{root}")
+        # print(f"Mutation successful")
+        # print(f"New architecture:")
+        # print(f"{root}")
         return root
 
 
@@ -463,6 +513,7 @@ class Evolution:
                     root = self.evolver.sample(self.input_params)
                 elif mode == "evolve":
                     root = self.evolver.evolve(self.population)
+                    print(f"Evolved architecture: {root}")
                 sample_duration = self.limiter.timer()
 
                 # check if batch pass does not exceed the time limit

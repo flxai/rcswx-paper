@@ -115,10 +115,6 @@ def build_baseline(baseline, input_params=None):
     sampler = Sampler(
         pcfg,
         "iterative",
-        time_limit=300,
-        max_id_limit=10000,
-        depth_limit=20,
-        mem_limit=8192,
         verbose=False
     )
     limiter.timer.start()

@@ -47,10 +47,6 @@ class SearchTreeNode:
             operation,
             stack,
             max_id,
-            time_limit,
-            max_id_limit,
-            depth_limit,
-            mem_limit,
             verbose=False,
             backtrack=True
         ):
@@ -59,10 +55,6 @@ class SearchTreeNode:
         self.operation = operation
         self.stack = stack
         self.max_id = max_id
-        self.time_limit = time_limit
-        self.max_id_limit = max_id_limit
-        self.depth_limit = depth_limit
-        self.mem_limit = mem_limit
         self.verbose = verbose
         self.backtrack = backtrack
 
@@ -89,10 +81,6 @@ class MCTS:
             seed=0,
             mode="iterative",
             backtrack=True,
-            time_limit=300,
-            max_id_limit=1000,
-            depth_limit=20,
-            mem_limit=4096,
             verbose=False,
             visualise=False,
             visualise_scale=0.5,
@@ -114,10 +102,6 @@ class MCTS:
         self.seed = seed
         self.mode = mode
         self.backtrack = backtrack
-        self.time_limit = time_limit
-        self.max_id_limit = max_id_limit
-        self.depth_limit = depth_limit
-        self.mem_limit = mem_limit
         self.verbose = verbose
         self.visualise = visualise
         self.visualise_scale = visualise_scale
@@ -139,10 +123,6 @@ class MCTS:
         self.sampler = Sampler(
             pcfg=self.pcfg,
             mode=self.mode,
-            time_limit=self.time_limit,
-            max_id_limit=self.max_id_limit,
-            depth_limit=self.depth_limit,
-            mem_limit=self.mem_limit,
             verbose=self.verbose
         )
 
@@ -172,10 +152,6 @@ class MCTS:
             operation=None,
             stack=Stack([(self.root, False)]),
             max_id=1,
-            time_limit=self.time_limit,
-            max_id_limit=self.max_id_limit,
-            depth_limit=self.depth_limit,
-            mem_limit=self.mem_limit,
             verbose=self.verbose,
             backtrack=self.backtrack
         ) # The root of the search tree
@@ -251,17 +227,17 @@ class MCTS:
         while not success:
             try:
                 # print("Rollout")
-                self.limiter.summarise_memory()
-                h = hpy()
-                print(h.heap())
+                # self.limiter.summarise_memory()
+                # h = hpy()
+                # print(h.heap())
                 # print some more memory stats
-                print(f"Memory of self.nodes: {self.total_memory(self.nodes) / 1e6:.2f} MB")
-                print(f"Memory of self.children: {self.total_memory(self.children) / 1e6:.2f} MB")
-                print(f"Memory of self.Q: {self.total_memory(self.Q) / 1e6:.2f} MB")
-                print(f"Memory of self.N: {self.total_memory(self.N) / 1e6:.2f} MB")
-                print(f"Memory of self.rewards: {self.total_memory(self.rewards) / 1e6:.2f} MB")
-                print(f"Memory of self.search_tree_root: {self.total_memory(self.search_tree_root) / 1e6:.2f} MB")
-                print(f"Memory of self: {self.total_memory(self) / 1e6:.2f} MB")
+                # print(f"Memory of self.nodes: {self.total_memory(self.nodes) / 1e6:.2f} MB")
+                # print(f"Memory of self.children: {self.total_memory(self.children) / 1e6:.2f} MB")
+                # print(f"Memory of self.Q: {self.total_memory(self.Q) / 1e6:.2f} MB")
+                # print(f"Memory of self.N: {self.total_memory(self.N) / 1e6:.2f} MB")
+                # print(f"Memory of self.rewards: {self.total_memory(self.rewards) / 1e6:.2f} MB")
+                # print(f"Memory of self.search_tree_root: {self.total_memory(self.search_tree_root) / 1e6:.2f} MB")
+                # print(f"Memory of self: {self.total_memory(self) / 1e6:.2f} MB")
 
                 if self.verbose: print("Simulating architecture")
                 simulation_path = deepcopy(path)
@@ -327,31 +303,31 @@ class MCTS:
 
     def _select(self, node):
         "Find an unexplored descendant of `node`"
-        print(f"---- Selecting a node ----")
+        if self.verbose: print(f"---- Selecting a node ----")
         path = []
         while True:
             path.append(node)
-            print(f"Appended {node} to path")
+            if self.verbose: print(f"Appended {node} to path")
             if node not in self.children or not self.children[node]:
                 # node is either unexplored or termina
-                print(f"This node is either unexplored or a terminal, return path: {path}")
+                if self.verbose: print(f"This node is either unexplored or a terminal, return path: {path}")
                 return path
             unexplored = self.children[node] - self.children.keys()
             if unexplored:
                 n = unexplored.pop()
                 path.append(n)
-                print(f"Found unexplored child among children: {n}")
-                print(f"Returning path: {path}")
+                if self.verbose: print(f"Found unexplored child among children: {n}")
+                if self.verbose: print(f"Returning path: {path}")
                 return path
-            print(f"Node {node} has children:")
+            if self.verbose: print(f"Node {node} has children:")
             for child in self.children[node]:
-                print(f"\t{child}")
-                print(f"\tQ: {self.Q[child]}, N: {self.N[child]}")
+                if self.verbose: print(f"\t{child}")
+                if self.verbose: print(f"\tQ: {self.Q[child]}, N: {self.N[child]}")
             # All children of node should already be expanded:
             assert all(n in self.children for n in self.children[node])
             # descend a layer deeper
             node = max(self.children[node], key=partial(self.acquisition_select, parent=node))
-            print(f"Max score child: {node}")
+            if self.verbose: print(f"Max score child: {node}")
 
     def _expand_path(self, path, leaf=None):
         """
@@ -475,10 +451,6 @@ class MCTS:
                     operation=child_node.operation,
                     stack=child_stack,
                     max_id=child_max_id,
-                    time_limit=self.time_limit,
-                    max_id_limit=self.max_id_limit,
-                    depth_limit=self.depth_limit,
-                    mem_limit=self.mem_limit,
                     verbose=self.verbose,
                     backtrack=self.backtrack
                 )

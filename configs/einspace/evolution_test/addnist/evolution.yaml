@@ -19,7 +19,7 @@ architecture_seed: None
 mutation_strategy: "random"
 mutation_rate: 1.0
 crossover_strategy: "one_point"
-crossover_rate: 0.5
+crossover_rate: 0
 selection_strategy: "tournament"
 tournament_size: 10
 elitism: False
