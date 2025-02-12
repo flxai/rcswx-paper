@@ -55,6 +55,8 @@ class Sampler:
         while not stack.is_empty():
             # print(f"Architecture so far: {root}")
             if self.verbose: print(f"Architecture so far: {root}")
+            if operations is not None:
+                if self.verbose: print(f"Operations: {[op.name for op in operations]}")
 
             if self.verbose: print(f"Stack: {stack}")
             node_id, visited = stack.pop()
@@ -67,6 +69,7 @@ class Sampler:
                 node.give_back_output_params()
                 if not node.is_root():
                     if self.verbose: print(f"Propagated output params from node {node.id} to parent {node.parent.id}")
+                    if self.verbose: print(f"Input params for node: {node.parent.id}, {node.parent.input_params}")
                     if self.verbose: print(f"Output params for node: {node.parent.id}, {node.parent.output_params}")
             else:
                 stack.append((node.id, True))
@@ -82,12 +85,15 @@ class Sampler:
                         node,
                         verbose=self.verbose,
                     )
+                    if operation not in self.pcfg.get_available_options(node)[0]:
+                        raise RuntimeError(f"Operation {operation} not in available options")
                     if self.verbose: print(f"Selected operation: {operation}")
                     stack, max_id = node.initialise(
                         operation,
                         stack,
                         max_id,
                     )
+                    if self.verbose: print(f"Output params for node: {node.id}, {node.output_params}")
                     for child in node.children:
                         if child.id not in self.nodes:
                             self.nodes[child.id] = child
