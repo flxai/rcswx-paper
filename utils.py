@@ -1,7 +1,9 @@
+import math
 from os.path import join
 from functools import reduce
 from time import perf_counter as time
 import psutil
+from scipy import stats
 import yaml
 
 import sys
@@ -273,3 +275,73 @@ class Limiter:
         repr += f"\t{self.memory - self.memory_checkpoint:.2f} MB (individual memory)\n"
         repr += ")"
         return repr
+
+
+def kendall_rank_correlation(all_labels, all_preds):
+    """Gets the kendall's tau-b rank correlation coefficient.
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.kendalltau.html
+    Parameters
+    ----------
+    all_labels: list
+        A list of labels.
+    all_preds: list
+        A list of predicted values.
+    Returns
+    -------
+    correlation: float
+        The tau statistic.
+    pvalue: float
+        The two-sided p-value for a hypothesis test whose null hypothesis is an absence of association, tau = 0.
+    """
+
+    tau, p_value = stats.kendalltau(all_preds, all_labels)
+    return tau
+
+
+def millify(n, bytes=False, return_float=False):
+    n = float(n)
+    if bytes:
+        millnames = ["B", "KB", "MB", "GB", "TB", "PB"]
+    else:
+        millnames = ["", "K", "M", "B", "T"]
+    millidx = max(
+        0,
+        min(
+            len(millnames) - 1,
+            int(math.floor(0 if n == 0 else math.log10(abs(n)) / 3)),
+        ),
+    )
+    if return_float:
+        return n / 10 ** (3 * millidx)
+    else:
+        return f"{int(n / 10 ** (3 * millidx))}{millnames[millidx]}"
+
+
+# --------- functions for scanning making predictions from one-hot or multi-hot models
+def scan_thresholded(thresh_row):
+    predicted_label = 0
+    for ind in range(thresh_row.shape[0]):  # start scanning from left to right
+        if thresh_row[ind] == 1:
+            predicted_label += 1
+        else:  # break the first time we see 0
+            break
+    return predicted_label
+
+
+def logits_to_preds(logits, loss_type):
+    with torch.no_grad():
+        if loss_type == 'multi_hot':
+            probs = torch.sigmoid(logits)
+            thresholded = torch.where(probs > 0.5, torch.ones_like(probs), torch.zeros_like(probs))  # apply threshold 0.5
+            preds = []
+            batch_size = thresholded.shape[0]
+            for i in range(batch_size):  # for each item in batch
+                thresholded_row = thresholded[i, :]  # apply threshold to probabilities to replace floats with either 1's or 0's
+                predicted_label = scan_thresholded(thresholded_row)  # scan from left to right and make the final prediction
+                preds.append(predicted_label)
+
+        else:  # softmax followed by argmax
+            probs = torch.softmax(logits, dim=1)
+            preds_tensor = torch.argmax(probs, dim=1)  # argmax in dim 1 over 8 classes
+            preds = [pred.item() for pred in preds_tensor]
+        return preds, probs  # preds is 1d list, probs 2d tensor

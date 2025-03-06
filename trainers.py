@@ -8,13 +8,13 @@ import torch.nn as nn
 from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
 from torch import optim
 
-from einspace.utils import logits_to_preds, kendall_rank_correlation
-from einspace.data_utils.darcyflow import LpLoss
-from einspace.data_utils.psicov import calculate_mae, evaluate_test_protein
-from einspace.data_utils.fsd50k import calculate_map
-from einspace.data_utils.ecg import f1_score_ecg
-from einspace.data_utils.deepsea import calculate_auroc
-from einspace.data_utils.cosmic import CosmicBCEWithLogitsLoss, CosmicMetricFunction
+from utils import logits_to_preds, kendall_rank_correlation
+from data_utils.darcyflow import LpLoss
+from data_utils.psicov import calculate_mae, evaluate_test_protein
+from data_utils.fsd50k import calculate_map
+from data_utils.ecg import f1_score_ecg
+from data_utils.deepsea import calculate_auroc
+from data_utils.cosmic import CosmicBCEWithLogitsLoss, CosmicMetricFunction
 
 
 class Trainer:

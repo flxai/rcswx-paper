@@ -25,6 +25,7 @@ def parse_arguments():
     parser.add_argument("--reward_mode", type=str, default="sum", help="The reward mode to use.")
     parser.add_argument("--add_full_paths", action="store_true", help="Add the full paths to the search tree in MCTS.")
     # evolution
+    parser.add_argument("--generational", action="store_true", help="Use generational evolution (as opposed to steady-state).")
     parser.add_argument("--regularised", action="store_true", help="Use regularised evolution.")
     parser.add_argument("--population_size", type=int, default=100, help="The population size to use.")
     parser.add_argument("--architecture_seed", type=str, default=None, help="Baseline architectures to seed the search with, separate with '+', e.g. resnet18+vit+mlpmixer.")
@@ -34,7 +35,7 @@ def parse_arguments():
     parser.add_argument("--crossover_rate", type=float, default=0.5, help="The crossover rate to use.")
     parser.add_argument("--selection_strategy", type=str, default="tournament", help="The selection strategy to use.")
     parser.add_argument("--tournament_size", type=int, default=10, help="The tournament size to use.")
-    parser.add_argument("--elitism", action="store_true", help="Use regularised evolution.")
+    parser.add_argument("--elitism", type=int, default=None, help="Number of elites to keep across generations.")
     parser.add_argument("--n_tries", type=int, default=None, help="The number of tries to use in evolution before randomly generating an individual.")
     # evaluation details
     parser.add_argument("--dataset", type=str, default="mnist", help="The dataset to use.")
@@ -50,10 +51,12 @@ def parse_arguments():
     parser.add_argument("--visualise", action="store_true", help="Visualise the derivation tree.")
     parser.add_argument("--visualise_scale", type=float, default=0.8, help="The scale of the visualisation.")
     parser.add_argument("--vis_interval", type=int, default=10, help="The interval to log the results.")
-    # saving results and figures
+    # load data and saving results and figures
+    parser.add_argument("--data_path", type=str, default="data", help="The path to load data from.")
     parser.add_argument("--figures_path", type=str, default="figures", help="The path to save the figures.")
     parser.add_argument("--results_path", type=str, default="results", help="The path to save the results.")
     # continue search
     parser.add_argument("--continue_search", action="store_true", help="Continue the search.")
+    parser.add_argument("--load_from", type=str, default=None, help="Path to load search history from.")
     args = parser.parse_args()
     return args

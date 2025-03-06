@@ -10,18 +10,18 @@ from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
 from torchvision.datasets.folder import default_loader
 from torchvision import datasets, transforms
 
-from einspace.utils import millify
+from utils import millify
 
 
 # --------------------------------------------------------
 # NASBench360 imports
-from einspace.data_utils.fsd50k import build_nasbench360_fsd_dataset
-from einspace.data_utils.darcyflow import build_nasbench360_darcy_dataset
-from einspace.data_utils.psicov import build_nasbench360_psicov_dataset
-from einspace.data_utils.cosmic import build_nasbench360_cosmic_dataset
-from einspace.data_utils.ecg import build_nasbench360_ecg_dataset
-from einspace.data_utils.satellite import build_nasbench360_satellite_dataset
-from einspace.data_utils.deepsea import build_nasbench360_deepsea_dataset
+from data_utils.fsd50k import build_nasbench360_fsd_dataset
+from data_utils.darcyflow import build_nasbench360_darcy_dataset
+from data_utils.psicov import build_nasbench360_psicov_dataset
+from data_utils.cosmic import build_nasbench360_cosmic_dataset
+from data_utils.ecg import build_nasbench360_ecg_dataset
+from data_utils.satellite import build_nasbench360_satellite_dataset
+from data_utils.deepsea import build_nasbench360_deepsea_dataset
 # --------------------------------------------------------
 
 
