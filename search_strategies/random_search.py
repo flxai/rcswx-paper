@@ -15,19 +15,13 @@ class Sampler:
     def __init__(
             self,
             pcfg,
+            limiter,
             mode,
-            time_limit=300,
-            max_id_limit=1000,
-            depth_limit=20,
-            mem_limit=4096,
             verbose=False
         ):
         self.pcfg = pcfg
+        self.limiter = limiter
         self.mode = mode
-        self.time_limit = time_limit
-        self.max_id_limit = max_id_limit
-        self.depth_limit = depth_limit
-        self.mem_limit = mem_limit
         self.verbose = verbose
 
         if self.mode == "iterative":
@@ -38,6 +32,20 @@ class Sampler:
     def sample(self, input_params, operations=None, root=None):
         # catch RuntimeErrors and MemoryErrors and try again
         return self.__call__(input_params, operations, root)
+
+    def re_id(self, root):
+        # re initialise and construct the subtree rooted at this node
+        # use input list of operations to construct it
+        self.limiter.timer.start()
+        root = self.sample(
+            input_params=root.input_params,
+            root=None,
+            operations=[
+                node.operation
+                for node in root.serialise()
+            ],
+        )
+        return root
 
     def sample_iterative(self, input_params, operations=None, root=None):
         if root is None:
@@ -86,8 +94,8 @@ class Sampler:
                         verbose=self.verbose,
                     )
                     if operation not in self.pcfg.get_available_options(node)[0]:
-                        raise RuntimeError(f"Operation {operation} not in available options")
-                    if self.verbose: print(f"Selected operation: {operation}")
+                        raise RuntimeError(f"Operation {operation.name} not in available options: {[op.name for op in self.pcfg.get_available_options(node)[0]]}")
+                    if self.verbose: print(f"Selected operation: {operation.name}")
                     stack, max_id = node.initialise(
                         operation,
                         stack,
@@ -120,10 +128,6 @@ class RandomSearch:
             seed=0,
             mode="iterative",
             backtrack=True,
-            time_limit=300,
-            max_id_limit=1000,
-            depth_limit=20,
-            mem_limit=4096,
             verbose=False,
             visualise=False,
             visualise_scale=0.5,
@@ -131,6 +135,7 @@ class RandomSearch:
             figures_path=None,
             results_path=None,
             continue_search=False,
+            load_from=None,
         ):
         self.evaluation_fn = evaluation_fn
         self.pcfg = pcfg
@@ -139,10 +144,6 @@ class RandomSearch:
         self.seed = seed
         self.mode = mode
         self.backtrack = backtrack
-        self.time_limit = time_limit
-        self.max_id_limit = max_id_limit
-        self.depth_limit = depth_limit
-        self.mem_limit = mem_limit
         self.verbose = verbose
         self.visualise = visualise
         self.visualise_scale = visualise_scale
@@ -150,14 +151,11 @@ class RandomSearch:
         self.figures_path = figures_path
         self.results_path = results_path
         self.continue_search = continue_search
+        self.load_from = load_from
 
         self.sampler = Sampler(
             pcfg=self.pcfg,
             mode=self.mode,
-            time_limit=self.time_limit,
-            max_id_limit=self.max_id_limit,
-            depth_limit=self.depth_limit,
-            mem_limit=self.mem_limit,
             verbose=self.verbose
         )
 
@@ -259,6 +257,8 @@ class RandomSearch:
     def load_results(self):
         # load the search results
         path = join(self.results_path, "search_results.pkl")
+        if not exists(path) and self.load_from:
+            path = self.load_from
         if exists(path):
             with open(path, "rb") as f:
                 data = pickle.load(f)

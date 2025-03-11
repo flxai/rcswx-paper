@@ -2,7 +2,6 @@ from copy import deepcopy
 from random import choices
 import sys
 from rich import print
-import psutil
 
 
 class OutOfOptionsError(Exception):
@@ -54,7 +53,7 @@ class PCFG:
         # print(f"Possible options: {[options[i].name for i in indices]}")
         indices_to_remove = []
         for i in indices:
-            if not self.check_sequential_closure(node, options, indices, i):
+            if not self.check_sequential_closure(node, options, i):
                 # print(f"Removed option {options[i].name} for node {node.id} at level {node.level}")
                 indices_to_remove.append(i)
         indices = [i for i in indices if i not in indices_to_remove]
@@ -74,7 +73,7 @@ class PCFG:
         probs = [p / sum(probs) for p in probs]
         return options, probs
 
-    def check_sequential_closure(self, node, options, indices, i):
+    def check_sequential_closure(self, node, options, i):
         # extra check to see if a sequential(k) module is being closed
         # of so, the inner modules must be repeatable k times
         # first we must find if there is a parent node that is a sequential(k) module

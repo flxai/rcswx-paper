@@ -48,12 +48,7 @@ class Plotter:
         node_type = {"sequential": 0, "sequential(4)": 1, "sequential(8)": 2, "branching(2)": 3, "branching(4)": 4, "branching(8)": 5, "routing": 6, "computation": 7}
         data = []
         for i, result in enumerate(self.results[key]):
-            if len(result) == 2:
-                arch, reward = result
-            elif len(result) == 4:
-                arch, reward, _, _ = result
-            else:
-                raise ValueError("Unexpected result format")
+            arch, reward = result[0], result[1]
             color = colors[node_type[arch[0].operation.name]]
             label = arch[0].operation.name
             data.append((i, reward, color, label))
@@ -76,9 +71,8 @@ class Plotter:
         plt.figure(figsize=(6, 3))
         data = []
         for i, result in enumerate(self.results["rewards"]):
-            arch, reward, _, _ = result
-            num_params = arch[0].num_params()
-            data.append((i, num_params, reward))
+            num_params = result[0][0].num_params()
+            data.append((i, num_params, result[1]))
         for i, num_params, reward in tqdm(data, desc="Plotting num_params"):
             plt.scatter(i, num_params, c=reward, cmap="viridis", alpha=0.5)
         plt.yscale('log')
@@ -97,9 +91,8 @@ class Plotter:
         plt.figure(figsize=(6, 3))
         data = []
         for i, result in enumerate(self.results["rewards"]):
-            arch, reward, _, _ = result
-            num_nodes = len(arch)
-            data.append((i, num_nodes, reward))
+            num_nodes = len(result[0])
+            data.append((i, num_nodes, result[1]))
         for i, num_nodes, reward in tqdm(data, desc="Plotting num_nodes"):
             plt.scatter(i, num_nodes, c=reward, cmap="viridis", alpha=0.5)
         plt.yscale('log')
@@ -115,8 +108,8 @@ class Plotter:
         plt.close()
 
     def find_best_architecture(self):
-        idx, (best_arch, best_reward, _, _) = max(enumerate(self.results["rewards"]), key=lambda x: x[1][1])
-        return idx, best_arch, best_reward
+        idx, best = max(enumerate(self.results["rewards"]), key=lambda x: x[1][1])
+        return idx, best[0], best[1]
 
 
 if __name__ == "__main__":

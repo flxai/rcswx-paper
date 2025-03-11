@@ -31,6 +31,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
                 args.results_path,
                 utils.get_exp_path(args),
             ),
+            "load_from": args.load_from,
         },
         "mcts": {
             "figures_path": join(
@@ -41,6 +42,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
                 args.results_path,
                 utils.get_exp_path(args),
             ),
+            "load_from": args.load_from,
             "acquisition_fn": args.acquisition_fn,
             "exploration_weight": args.exploration_weight,
             "incubent_type": args.incubent_type,
@@ -56,6 +58,8 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
                 args.results_path,
                 utils.get_exp_path(args),
             ),
+            "load_from": args.load_from,
+            "generational": args.generational,
             "regularised": args.regularised,
             "population_size": args.population_size,
             "architecture_seed": args.architecture_seed,
