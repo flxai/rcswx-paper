@@ -2,6 +2,7 @@ import math
 from os.path import join
 from functools import reduce
 from time import perf_counter as time
+from pathlib import Path
 import psutil
 from scipy import stats
 import yaml
@@ -24,6 +25,20 @@ class CPU_Unpickler(Unpickler):
 
 def load_config(args):
     # load yaml file and overwrite anything in it
+    # relative to working dir
+    local_config = Path(args.config)
+    # relative to script's dir
+    relative_config = Path(__file__).resolve().parent / args.config
+
+    print(local_config)
+    print(relative_config)
+
+    config = None
+    if local_config.exists():
+        config = local_config
+    if relative_config.exists():
+        config = relative_config
+
     with open(args.config, "r") as f:
         config = yaml.load(f, Loader=yaml.Loader)
         for key, value in config.items():
