@@ -21,6 +21,6 @@ mkdir -p $(dirname $LOG_FILE)
 touch $LOG_FILE
 
 # Run the script
-python main.py --config $CONFIG_FILE --device cuda:$GPU_ID | tee $LOG_FILE
-python test.py --config $CONFIG_FILE --device cuda:$GPU_ID | tee -a $LOG_FILE
-python plot.py --config $CONFIG_FILE --device cuda:$GPU_ID
+python "$WD/../main.py" --config $CONFIG_FILE --device cuda:$GPU_ID &> $LOG_FILE
+python "$WD/../test.py" --config $CONFIG_FILE --device cuda:$GPU_ID &>> $LOG_FILE
+python "$WD/../plot.py" --config $CONFIG_FILE --device cuda:$GPU_ID
