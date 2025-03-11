@@ -615,6 +615,57 @@ class Evolution:
         else:
             print("No previous search results found, starting from scratch")
 
+def apply_fractional_edit_path(G1, G2, fraction=0.5):
+    """
+    Transforms G1 toward G2 by applying a fraction (0.0 to 1.0) of the optimal edit operations.
+
+    Parameters
+    ----------
+    G1, G2 : networkx.Graph
+        The source and target graphs.
+    fraction : float
+        Fraction of edit operations to apply.
+
+    Returns
+    -------
+    H : networkx.Graph
+        Partially transformed graph.
+    """
+    # Get the optimal edit path (vertex and edge operations)
+    paths, _ = optimal_edit_paths(G1, G2)
+    vertex_path, edge_path = paths[0]
+
+    total_ops = len(vertex_path) + len(edge_path)
+    num_ops = int(fraction * total_ops)
+
+    H = G1.copy()
+
+    # Apply vertex operations first.
+    v_ops = min(num_ops, len(vertex_path))
+    for u, v in vertex_path[:v_ops]:
+        if u is not None and v is None:
+            if u in H:
+                H.remove_node(u)
+        elif u is None and v is not None:
+            H.add_node(v, **G2.nodes[v])
+        elif u is not None and v is not None:
+            if u in H:
+                H.nodes[u].update(G2.nodes[v])
+
+    # Then apply remaining edge operations.
+    remaining = num_ops - v_ops
+    for g, h in edge_path[:remaining]:
+        if g is not None and h is None:
+            if H.has_edge(*g):
+                H.remove_edge(*g)
+        elif g is None and h is not None:
+            H.add_edge(*h, **G2.edges[h])
+        elif g is not None and h is not None:
+            if H.has_edge(*g):
+                H.edges[g].update(G2.edges[h])
+
+    return H
+
 def individual_to_nx(individual):
     """
     Converts an Individual's derivation tree (root is a DerivationTreeNode)
