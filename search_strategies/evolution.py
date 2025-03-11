@@ -13,6 +13,8 @@ from baselines import build_baseline, baseline_dict
 from visualise import visualise_derivation_tree
 from plot import Plotter
 
+from sepx.similarity import optimal_edit_paths
+
 import torch
 
 
@@ -182,7 +184,19 @@ class Evolver(Sampler):
                 return self.one_point_crossover(parent1, parent2)
             elif self.crossover_strategy == "two_point":
                 return self.two_point_crossover(parent1, parent2)
+            elif self.crossover_strategy == "shortest_edit_path":
+                return self.shortest_edit_path_crossover(parent1, parent2)
         return parent1
+
+    def shortest_edit_path_crossover(self, parent1, parent2):
+        G1 = individual_to_nx(parent1)
+        G2 = individual_to_nx(parent2)
+        print("COMPUTING EDIT PATHS... THIS MIGHT TAKE A WHILE...")
+        H = apply_fractional_edit_path(G1, G2, fraction=0.5)
+        new_id = max(parent1.id, parent2.id) + 1
+        parent_id = parent1.id
+        child = nx_to_individual(H, id=new_id, parent_id=parent_id)
+        return child
 
     def one_point_crossover(self, parent1, parent2):
         successes = [False, False]
