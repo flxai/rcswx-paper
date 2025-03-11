@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
+set -e
 
 # take two input arguments, config file and the GPU id
 CONFIG_FILE=$1
 GPU_ID=$2
+WD=$(realpath $(dirname "$0"))
+
+# Check for set config and GPU id
+if [ "$#" -ne 2 ]; then
+    echo "$(basename """$1""") CONFIG_FILE GPU_ID" >&2
+    exit 1
+fi
 
 # create log file from the config file
 # e.g. configs/a/b/c/d.yaml -> logs/a/b/c/d.txt
