@@ -614,3 +614,119 @@ class Evolution:
                 print(f"Continuing search from iteration {self.iteration}")
         else:
             print("No previous search results found, starting from scratch")
+
+def individual_to_nx(individual):
+    """
+    Converts an Individual's derivation tree (root is a DerivationTreeNode)
+    to a NetworkX DiGraph.
+
+    Parameters
+    ----------
+    individual : Individual
+        The Individual whose derivation tree will be converted.
+
+    Returns
+    -------
+    G : networkx.DiGraph
+        Directed graph representing the derivation tree.
+    """
+    import networkx as nx
+    G = nx.DiGraph()
+
+    def traverse(node):
+        G.add_node(
+            node.id,
+            level=node.level,
+            input_params=node.input_params,
+            output_params=node.output_params,
+            depth=node.depth,
+            operation=node.operation
+        )
+        for child in node.children:
+            G.add_edge(node.id, child.id)
+            traverse(child)
+
+    traverse(individual.root)
+    return G
+
+def nx_to_individual(G, individual_id, parent_id, accuracy=None, age=0, hpo_dict=None):
+    """
+    Converts a NetworkX graph representing a derivation tree into an Individual,
+    whose root is a DerivationTreeNode connected to all other nodes.
+
+    Parameters
+    ----------
+    G : networkx.Graph or DiGraph
+        The graph representing the derivation tree. Nodes should have attributes
+        like "level", "input_params", "output_params", "depth", and "operation".
+    individual_id : any
+        ID for the new Individual.
+    parent_id : any
+        Parent ID for the new Individual.
+    accuracy : optional
+        Accuracy attribute.
+    age : int, optional
+        Age attribute.
+    hpo_dict : dict, optional
+        Hyperparameter optimization dictionary.
+
+    Returns
+    -------
+    individual : Individual
+        New Individual instance with a DerivationTreeNode as root.
+    """
+    # Determine root: for directed graphs, node with in_degree==0; else, lowest depth.
+    if hasattr(G, "is_directed") and G.is_directed():
+        root_id = next(n for n in G.nodes if G.in_degree(n) == 0)
+    else:
+        root_id = min(G.nodes, key=lambda n: G.nodes[n].get("depth", float('inf')))
+
+    nodes_data = dict(G.nodes(data=True))
+    children_map = {n: [] for n in G.nodes}
+
+    if hasattr(G, "is_directed") and G.is_directed():
+        for u, v in G.edges():
+            children_map[u].append(v)
+    else:
+        for u, v in G.edges():
+            d_u = G.nodes[u].get("depth", float('inf'))
+            d_v = G.nodes[v].get("depth", float('inf'))
+            if d_u < d_v:
+                children_map[u].append(v)
+            elif d_v < d_u:
+                children_map[v].append(u)
+            else:
+                # Tie-breaker: favor root_id
+                if u == root_id:
+                    children_map[u].append(v)
+                else:
+                    children_map[v].append(u)
+
+    def build_tree(node_id, parent=None):
+        data = nodes_data[node_id]
+        node = DerivationTreeNode(
+            id=node_id,
+            level=data.get("level", "network"),
+            parent=parent,
+            input_params=data.get("input_params", {}),
+            depth=data.get("depth", 0),
+            limiter=None,
+            operation=data.get("operation", None)
+        )
+        node.output_params = data.get("output_params", {})
+        for child_id in children_map[node_id]:
+            child = build_tree(child_id, parent=node)
+            node.children.append(child)
+        return node
+
+    root = build_tree(root_id)
+
+    individual = Individual(
+        id=individual_id,
+        parent_id=parent_id,
+        root=root,
+        accuracy=accuracy,
+        age=age,
+        hpo_dict=hpo_dict
+    )
+    return individual
