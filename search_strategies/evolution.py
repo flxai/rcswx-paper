@@ -189,6 +189,31 @@ class Evolver(Sampler):
         return parent1
 
     def shortest_edit_path_crossover(self, parent1, parent2):
+        """
+        Creates a new Individual by performing a crossover between two parents
+        using a fractional graph edit path.
+
+        This method:
+          1. Converts the derivation trees of parent1 and parent2 into NetworkX graphs.
+          2. Computes a fractional edit path (50% of edits) from parent1's graph (G1)
+             toward parent2's graph (G2) using apply_fractional_edit_path.
+             (Note: This computation may be slow.)
+          3. Converts the resulting graph back into a derivation tree and wraps it in an Individual.
+          4. Assigns a new id to the child based on the maximum parent id and sets parent1 as its parent.
+
+        Parameters
+        ----------
+        parent1 : Individual
+            The first parent individual.
+        parent2 : Individual
+            The second parent individual.
+
+        Returns
+        -------
+        Individual
+            A new child individual created by combining parent1 and parent2 through
+            the shortest edit path crossover.
+        """
         G1 = individual_to_nx(parent1)
         G2 = individual_to_nx(parent2)
         print("COMPUTING EDIT PATHS... THIS MIGHT TAKE A WHILE...")
