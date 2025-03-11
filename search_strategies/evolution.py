@@ -11,6 +11,7 @@ from tqdm import tqdm
 from search_strategies.random_search import Sampler
 from baselines import build_baseline, baseline_dict
 from visualise import visualise_derivation_tree
+from search_strategies.utils import constrained_smith_waterman_crossover
 from plot import Plotter
 
 import torch
@@ -22,14 +23,14 @@ class Individual(object):
     def __init__(
         self,
         id,
-        parent_id,
+        ancestry=None,
         root=None,
         accuracy=None,
         age=0,
         hpo_dict=None,
     ):
         self.id = id
-        self.parent_id = parent_id
+        self.ancestry = ancestry
         self.root = root
         self.accuracy = accuracy
         self.age = age
@@ -39,7 +40,7 @@ class Individual(object):
 
     def __repr__(self):
         """Prints a readable version of this bitstring."""
-        return f"Individual(id={self.id}, accuracy={self.accuracy}, age={self.age}"
+        return f"Individual(id={self.id}, accuracy={self.accuracy}, age={self.age})"
 
     def __eq__(self, other):
         return self.id == other.id
@@ -121,10 +122,6 @@ class Evolver(Sampler):
         self,
         pcfg=None,
         mode="iterative",
-        time_limit=300,
-        max_id_limit=1000,
-        depth_limit=20,
-        mem_limit=4096,
         limiter=None,
         mutation_strategy="random",
         mutation_rate=1.0,
@@ -137,11 +134,8 @@ class Evolver(Sampler):
     ):
         super().__init__(
             pcfg=pcfg,
+            limiter=limiter,
             mode=mode,
-            time_limit=time_limit,
-            max_id_limit=max_id_limit,
-            depth_limit=depth_limit,
-            mem_limit=mem_limit,
             verbose=verbose
         )
         self.limiter = limiter
@@ -161,12 +155,15 @@ class Evolver(Sampler):
         if self.crossover_rate > 0:
             print(f"Parent 2: {parent2.accuracy}, {parent2.root}")
         # crossover the parents
-        child = self.crossover(parent1, parent2)
-        print(f"Child: {child.root}")
+        child_root, crossover_info = self.crossover(parent1.root, parent2.root)
+        print(f"Child: {child_root}")
         # mutate the child
-        child = self.mutate(child)
-        print(f"Mutated child: {child.root}")
-        return child.root
+        child_root, mutation_info = self.mutate(child_root)
+        print(f"Mutated child: {child_root}")
+        print("child after mutation")
+        print([(node.operation.name, node.id) for node in child_root.serialise()])
+        ancestry = {**crossover_info, **mutation_info}
+        return child_root, ancestry
 
     def select(self, population):
         if self.selection_strategy == "tournament":
@@ -180,9 +177,11 @@ class Evolver(Sampler):
         if random.random() < self.crossover_rate:
             if self.crossover_strategy == "one_point":
                 return self.one_point_crossover(parent1, parent2)
-            elif self.crossover_strategy == "two_point":
-                return self.two_point_crossover(parent1, parent2)
-        return parent1
+            # elif self.crossover_strategy == "two_point":
+            #     return self.two_point_crossover(parent1, parent2)
+            elif self.crossover_strategy == "constrained_smith_waterman":
+                return self.constrained_smith_waterman_crossover(parent1, parent2)
+        return parent1, {"crossover": False}
 
     def one_point_crossover(self, parent1, parent2):
         successes = [False, False]
@@ -192,12 +191,12 @@ class Evolver(Sampler):
                 raise RuntimeError("Crossover failed to generate valid children.")
             # filter valid nodes from parents without copying
             valid_nodes1 = [
-                node for node in parent1.root.serialise()
+                node for node in parent1.serialise()
                 if node.operation.type == 'nonterminal'
                 and node.parent is not None  # Exclude root nodes
             ]
             valid_nodes2 = [
-                node for node in parent2.root.serialise()
+                node for node in parent2.serialise()
                 if node.operation.type == 'nonterminal'
                 and node.parent is not None  # Exclude root nodes
             ]
@@ -216,10 +215,10 @@ class Evolver(Sampler):
 
             # locate the corresponding nodes in the deep copies
             node1_copy = next(
-                node for node in child1_copy.root.serialise() if node.id == node1.id
+                node for node in child1_copy.serialise() if node.id == node1.id
             )
             node2_copy = next(
-                node for node in child2_copy.root.serialise() if node.id == node2.id
+                node for node in child2_copy.serialise() if node.id == node2.id
             )
 
             # locate parent and index of the copied nodes
@@ -239,54 +238,42 @@ class Evolver(Sampler):
 
             # re-infer all params
             try:
-                self.limiter.timer.start()
-                child1 = self.sample(
-                    input_params=child1_copy.root.input_params,
-                    root=child1_copy.root,
-                    operations=[
-                        node.operation
-                        for node in child1_copy.root.serialise()
-                    ],
-                )
+                child1 = self.re_id(child1_copy)
+                # self.limiter.timer.start()
+                # child1 = self.sample(
+                #     input_params=child1_copy.input_params,
+                #     root=child1_copy,
+                #     operations=[
+                #         node.operation
+                #         for node in child1_copy.serialise()
+                #     ],
+                # )
                 successes[0] = True
             except:
                 pass
             try:
-                self.limiter.timer.start()
-                child2 = self.sample(
-                    input_params=child2_copy.root.input_params,
-                    root=child2_copy.root,
-                    operations=[
-                        node.operation
-                        for node in child2_copy.root.serialise()
-                    ],
-                )
+                child2 = self.re_id(child2_copy)
+                # self.limiter.timer.start()
+                # child2 = self.sample(
+                #     input_params=child2_copy.input_params,
+                #     root=child2_copy,
+                #     operations=[
+                #         node.operation
+                #         for node in child2_copy.serialise()
+                #     ],
+                # )
                 successes[1] = True
             except:
                 pass
             tries += 1
 
-        # create new individuals
-        if successes[0]:
-            child1_individual = Individual(
-                id=max(parent1.id, parent2.id) + 1,
-                parent_id=parent1.id,
-                root=child1
-            )
-        if successes[1]:
-            child2_individual = Individual(
-                id=max(parent1.id, parent2.id) + 1 if not successes[0] else child1_individual.id + 1,
-                parent_id=parent2.id,
-                root=child2
-            )
-
         # TODO FIXME return both children?
         # if successes[0] and successes[1]:
         #     return [child1_individual, child2_individual]
         if successes[0]:
-            return child1_individual
+            return child1, {"parent1": parent1, "parent2": parent2, "crossover": True, "crossover_node_id": node1.id}
         elif successes[1]:
-            return child2_individual
+            return child2, {"parent1": parent1, "parent2": parent2, "crossover": True, "crossover_node_id": node2.id}
 
 
     def two_point_crossover(self, parent1, parent2):
@@ -294,22 +281,49 @@ class Evolver(Sampler):
         # TODO Implement
         return this_is_a_stub
 
-    def mutate(self, individual):
+    def constrained_smith_waterman_crossover(self, parent1, parent2):
+        success = False
+        tries = 0
+        while not success:
+            if tries > 10:
+                raise RuntimeError("Crossover failed to generate valid children.")
+            child, crossover_operations = constrained_smith_waterman_crossover(parent1, parent2)
+            # re-infer all params
+            try:
+                child = self.re_id(child)
+                # self.limiter.timer.start()
+                # child = self.sample(
+                #     input_params=child.input_params,
+                #     root=None,
+                #     operations=[
+                #         node.operation
+                #         for node in child.serialise()
+                #     ],
+                # )
+                return child, {
+                    "parent1": parent1, "parent2": parent2,
+                    "crossover": True, "crossover_operations": crossover_operations
+                }
+            except:
+                pass
+            tries += 1
+
+    def mutate(self, root):
         if random.random() < self.mutation_rate:
             if self.mutation_strategy == "random":
-                return self.random_mutation(individual, allowed_types=["terminal", "nonterminal"])
+                return self.random_mutation(root, allowed_types=["terminal", "nonterminal"])
             elif self.mutation_strategy == "random_terminal":
-                return self.random_mutation(individual, allowed_types=["terminal"])
-        return individual
+                return self.random_mutation(root, allowed_types=["terminal"])
+        return root, {"mutation": False}
 
-    def random_mutation(self, individual, allowed_types="all"):
+    def random_mutation(self, root, allowed_types="all"):
         success = False
         while not success:
             try:
                 # print(f"Mutating architecture:")
-                root = deepcopy(individual.root)
-                # print(f"{root}")
-                nodes = root.serialise()
+                root_copy = deepcopy(root)
+                # print(f"{root_copy}")
+                nodes = root_copy.serialise()
                 allowed_nodes = [node for node in nodes if node.operation.type in allowed_types]
                 # print(allowed_nodes)
                 # choose a random node to mutate
@@ -317,19 +331,12 @@ class Evolver(Sampler):
                 # print(f"Mutating node:")
                 # print(f"{node}")
                 # mutate the node
-                root = self.mutate_node(root, node)
-                individual = Individual(
-                    id=individual.id,
-                    parent_id=individual.parent_id,
-                    root=root,
-                    accuracy=None,
-                    age=0,
-                    hpo_dict=None,
-                )
+                root_mutated = self.mutate_node(root_copy, node)
+                root_mutated = self.re_id(root_mutated)
                 success = True
             except Exception as e:
                 print("MutationError:", e)
-        return individual
+        return root_mutated, {"mutation": False, "mutation_node_id": node.id}
 
     def mutate_node(self, root, node):
         if node.is_leaf():
@@ -358,15 +365,16 @@ class Evolver(Sampler):
         # print(f"Inputs to sample: {root.input_params}")
         # print(f"Root: {root}")
         # print(f"Operations: {[node.operation.name for node in root.serialise()]}")
-        self.limiter.timer.start()
-        self.sample(
-            input_params=root.input_params,
-            root=root,
-            operations=[
-                node.operation
-                for node in root.serialise()
-            ],
-        )
+        self.re_id(root)
+        # self.limiter.timer.start()
+        # self.sample(
+        #     input_params=root.input_params,
+        #     root=root,
+        #     operations=[
+        #         node.operation
+        #         for node in root.serialise()
+        #     ],
+        # )
         # print(f"Mutation successful")
         # print(f"New architecture:")
         # print(f"{root}")
@@ -383,10 +391,6 @@ class Evolution:
             seed=0,
             mode="iterative",
             backtrack=True,
-            time_limit=300,
-            max_id_limit=1000,
-            depth_limit=20,
-            mem_limit=4096,
             verbose=False,
             visualise=False,
             visualise_scale=0.5,
@@ -394,7 +398,9 @@ class Evolution:
             figures_path=None,
             results_path=None,
             continue_search=False,
+            load_from=None,
             # evolution specific parameters
+            generational=False,
             regularised=True, # use regularised evolution
             population_size=100, # number of individuals in the population
             architecture_seed=None,
@@ -404,7 +410,7 @@ class Evolution:
             crossover_rate=0.5, # probability of crossover
             selection_strategy="tournament", # "tournament" or "roulette"
             tournament_size=10, # only used if selection_strategy is "tournament"
-            elitism=True, # keep the best individual in the population
+            elitism=None, # number of best individuals to keep in the population
             n_tries=None, # number of tries to use in evolution before randomly generating an individual
         ):
         self.evaluation_fn = evaluation_fn
@@ -414,10 +420,6 @@ class Evolution:
         self.seed = seed
         self.mode = mode
         self.backtrack = backtrack
-        self.time_limit = time_limit
-        self.max_id_limit = max_id_limit
-        self.depth_limit = depth_limit
-        self.mem_limit = mem_limit
         self.verbose = verbose
         self.visualise = visualise
         self.visualise_scale = visualise_scale
@@ -425,7 +427,9 @@ class Evolution:
         self.figures_path = figures_path
         self.results_path = results_path
         self.continue_search = continue_search
+        self.load_from = load_from
         # evolution specific parameters
+        self.generational = generational
         self.regularised = regularised
         self.population_size = population_size
         self.architecture_seed = architecture_seed
@@ -436,15 +440,12 @@ class Evolution:
             )[:self.population_size]
         self.seed_population = {}
         print(f"Architecture seed: {self.architecture_seed}")
+        self.elitism = elitism
         self.n_tries = n_tries
 
         self.evolver = Evolver(
             pcfg=pcfg,
             mode=mode,
-            time_limit=time_limit,
-            max_id_limit=max_id_limit,
-            depth_limit=depth_limit,
-            mem_limit=mem_limit,
             limiter=limiter,
             mutation_strategy=mutation_strategy,
             mutation_rate=mutation_rate,
@@ -459,6 +460,8 @@ class Evolution:
         self.rewards = []
         self.iteration = 0
         self.population = Population([])
+        if self.generational:
+            self.old_population = Population([])
 
         self.set_rng_state(seed=self.seed)
 
@@ -492,7 +495,16 @@ class Evolution:
             self.iteration = self.population_size
 
         for iteration in tqdm(range(self.iteration, steps), desc="Evolving population", initial=self.iteration, total=steps):
-            self.step(iteration, "evolve")
+            pop_iteration = iteration % self.population_size
+            # if starting a new generation, save the old one and open a new empty one
+            if self.generational and pop_iteration == 0:
+                self.old_population = self.population
+                self.population = Population([])
+                print(f"New Generation!")
+            if self.generational and self.elitism is not None and pop_iteration < self.elitism:
+                self.step(iteration, "elite")
+            else:
+                self.step(iteration, "evolve")
 
     def step(self, iteration, mode):
         success = False
@@ -509,10 +521,19 @@ class Evolution:
                     seed_arch_name = self.architecture_seed.pop(0)
                     seed_arch = baseline_dict[seed_arch_name]
                     root = build_baseline(seed_arch, self.input_params)
-                if mode == "sample" or should_be_random:
+                    ancestry = None
+                elif mode == "sample" or should_be_random:
                     root = self.evolver.sample(self.input_params)
+                    ancestry = None
+                elif mode == "elite":
+                    # take best arch from old 
+                    pop_iteration = iteration % self.population_size
+                    individual = sorted(self.old_population, key=lambda individual: individual.accuracy)[-(1 + pop_iteration)]
+                    root, ancestry = individual.root, individual.ancestry
+                    print(f"Keeping elite architecture: {individual}")
                 elif mode == "evolve":
-                    root = self.evolver.evolve(self.population)
+                    population = self.old_population if self.generational else self.population
+                    root, ancestry = self.evolver.evolve(population)
                     print(f"Evolved architecture: {root}")
                 sample_duration = self.limiter.timer()
 
@@ -540,8 +561,9 @@ class Evolution:
                 print(f"Error in generating new individual: {e}")
 
         # add the new individual to the population
-        self.rewards.append((root.serialise(), reward, sample_duration, eval_duration))
-        self.population.append(Individual(id=iteration, parent_id=None, root=root, accuracy=reward))
+        individual = Individual(id=iteration, ancestry=ancestry, root=root, accuracy=reward)
+        self.rewards.append((root.serialise(), reward, sample_duration, eval_duration, ancestry))
+        self.population.append(individual)
         print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
         print(f"Architecture: {root}")
 
@@ -550,13 +572,14 @@ class Evolution:
             if len(self.population) >= self.population_size:
                 self.population.popleft()
 
+        self.plot(root, reward, iteration)
+
         # save the results
         self.save_results(iteration)
 
-        self.plot(root, reward, iteration)
-
     def plot(self, root, reward, iteration):
         # visualise the derivation tree
+        root = self.evolver.re_id(root)
         visualise_derivation_tree(
             root,
             scale=self.visualise_scale,
@@ -570,8 +593,9 @@ class Evolution:
             # find best architecture
             idx, best_arch, best_reward = plotter.find_best_architecture()
             # visualise it
+            best_root = self.evolver.re_id(best_arch[0])
             visualise_derivation_tree(
-                best_arch[0], iteration=f"best_{idx}", score=best_reward, show=False,
+                best_root, iteration=f"best_{idx}", score=best_reward, show=False,
                 save_path=self.figures_path
             )
             # plot results
@@ -588,12 +612,15 @@ class Evolution:
             final_path = join(self.results_path, f"search_results.pkl")
             try:
                 with open(temp_path, "wb") as f:
-                    pickle.dump({
+                    save_data = {
                         "rewards": self.rewards,
                         "iteration": iteration,
                         "population": self.population.tolist(),
                         "rng_state": random.getstate(),
-                    }, f)
+                    }
+                    if self.generational:
+                        save_data["old_population"] = self.old_population.tolist()
+                    pickle.dump(save_data, f)
                 rename(temp_path, final_path)
             except KeyboardInterrupt:
                 print("Saving interrupted. Partial results saved.")
@@ -603,12 +630,16 @@ class Evolution:
     def load_results(self):
         # load the search results
         path = join(self.results_path, "search_results.pkl")
+        if not exists(path) and self.load_from:
+            path = self.load_from
         if exists(path):
             with open(path, "rb") as f:
                 data = pickle.load(f)
                 self.rewards = data["rewards"]
                 self.iteration = data["iteration"] + 1
                 self.population = Population(data["population"])
+                if self.generational:
+                    self.old_population = Population(data["old_population"])
                 # set the random seed
                 self.set_rng_state(state=data["rng_state"])
                 print(f"Continuing search from iteration {self.iteration}")

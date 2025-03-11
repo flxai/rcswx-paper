@@ -54,8 +54,11 @@ class SequentialModule(nn.Module):
         self.second_fn = second_fn
 
     def forward(self, x):
+        # print("SequentialModule input_shape", x.shape)
         out = self.first_fn(x)
+        # print("SequentialModule first_fn output_shape", out.shape)
         out = self.second_fn(out)
+        # print("SequentialModule second_fn output_shape", out.shape)
         return out
 
 
@@ -121,14 +124,14 @@ class BranchingModule(nn.Module):
 
     def forward(self, x):
         branching_outs = list(self.branching_fn(x))
-        # print("BranchingModule branching_outs", [b.shape for b in branching_outs])
+        # print("BranchingModule branching_outs", self.branching_fn, [b.shape for b in branching_outs])
         inner_outs = []
         for i in range(len(branching_outs)):
             inner_out = self.inner_fn[i](branching_outs[i])
             inner_outs.append(inner_out)
         # print("BranchingModule inner_outs", [i.shape for i in inner_outs])
         aggregation_out = self.aggregation_fn(inner_outs)
-        # print("BranchingModule aggregation_out", aggregation_out.shape)
+        # print("BranchingModule aggregation_out", self.aggregation_fn, aggregation_out.shape)
         return aggregation_out
 
 
@@ -164,11 +167,15 @@ class RoutingModule(nn.Module):
     def forward(self, x):
         # make sure postrouting functions can undo any prerouting changes
         # so e.g. col2im can reshape things based on the original shape before im2col
-        # out = self.prerouting_fn(x)
-        # out = self.inner_fn(out)
-        # out = self.postrouting_fn(out)
-        # return out
-        return self.postrouting_fn(self.inner_fn(self.prerouting_fn(x)))
+        # print("RoutingModule input_shape", x.shape)
+        out = self.prerouting_fn(x)
+        # print("RoutingModule prerouting_fn output_shape", out.shape)
+        out = self.inner_fn(out)
+        # print("RoutingModule inner_fn output_shape", out.shape)
+        out = self.postrouting_fn(out)
+        # print("RoutingModule postrouting_fn output_shape", out.shape)
+        return out
+        # return self.postrouting_fn(self.inner_fn(self.prerouting_fn(x)))
 
 
 class ComputationModule(nn.Module):
@@ -189,7 +196,9 @@ class ComputationModule(nn.Module):
         self.computation_fn = computation_fn
 
     def forward(self, x):
+        # print("ComputationModule input_shape", x.shape)
         out = self.computation_fn(x)
+        # print("ComputationModule output_shape", out.shape)
         return out
 
 
@@ -521,12 +530,15 @@ class DotProduct(nn.Module):
         self.scaled = scaled
 
     def forward(self, tensors):
+        # print("DotProduct input_shape", [t.shape for t in tensors])
         a, b = tensors
         scale_factor = 1.0 / sqrt(a.size(-1)) if self.scaled else 1.0
         if (a.dim() == 2) and (b.dim() == 2):
             a, b = a.unsqueeze(1), b.unsqueeze(-1)
+            # print("DotProduct unsqueezed_shape", a.shape, b.shape)
             return (a @ b * scale_factor).squeeze(-1)
         else:
+            # print("DotProduct unsqueezed_shape", a.shape, b.shape)
             return a @ b * scale_factor
 
     def __repr__(self):
@@ -703,8 +715,10 @@ class EinNorm(nn.Module):
             raise NotImplementedError(
                 "Only shapes of (B, C, H, W) and (B, C, L) implemented."
             )
+        # print(f"EinNorm init with shape: {input_shape}")
 
     def forward(self, x):
+        # print(f"EinNorm forward with shape: {x.shape}")
         return self.fn(x)
 
 

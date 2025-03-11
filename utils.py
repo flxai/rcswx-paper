@@ -50,6 +50,7 @@ def get_exp_path(args):
         f"max_id_limit={args.max_id_limit}",
         f"depth_limit={args.depth_limit}",
         f"mem_limit={args.mem_limit}",
+        f"load_from={args.load_from}",
     )
     if args.search_strategy == "random_search":
         pass
@@ -62,6 +63,7 @@ def get_exp_path(args):
         exp_path = join(exp_path, f"reward_mode={args.reward_mode}")
         exp_path = join(exp_path, f"add_full_paths={args.add_full_paths}")
     elif args.search_strategy == "evolution":
+        exp_path = join(exp_path, f"generational={args.generational}")
         exp_path = join(exp_path, f"regularised={args.regularised}")
         exp_path = join(exp_path, f"population_size={args.population_size}")
         exp_path = join(exp_path, f"architecture_seed={args.architecture_seed}")
@@ -194,8 +196,11 @@ class Limiter:
         timer = Timer()
         for _ in range(self.n_batch_passes):
             timer.start()
+            # print(f"Batch pass {node.id}")
+            # print(f"check_batch_pass_time with shape: {self.batch_shape}")
             model(torch.randn(self.batch_shape).to(self.device))
             dur += timer()
+            # print(f"Batch pass {node.id} completed. {dur} seconds elapsed.")
 
         duration = dur / self.n_batch_passes
 

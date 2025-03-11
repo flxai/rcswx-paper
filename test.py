@@ -91,13 +91,16 @@ search_results = load(open(join(
 ), "rb"))
 
 # get the best architecture, sorted by "accuracy"
-best_architecture, best_val_score, _, _ = sorted(search_results["rewards"], key=lambda x: x[1], reverse=True)[0]
+# results = sorted(search_results["rewards"][:args.steps], key=lambda x: x[1], reverse=True)[0]
+rewards = search_results["rewards"][:args.steps]
+idx, best = max(enumerate(rewards), key=lambda x: x[1][1])
+best_architecture, best_val_score = best[0], best[1]
 
 # evaluate the best architecture
 limiter.timer.start()
 test_score = eval_fn(best_architecture[0])
 eval_duration = limiter.timer()
-print(f"Test score: {test_score:.4f} (val score of {best_val_score:.4f}) - Time: {eval_duration:.2f}s")
+print(f"ID: {idx}, Test score: {test_score:.4f} (val score of {best_val_score:.4f}) - Time: {eval_duration:.2f}s")
 
 # save the best architecture and its evaluation in csv format
 with open(join(args.results_path, get_exp_path(args), "best_architecture.csv"), "w") as f:

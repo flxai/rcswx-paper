@@ -26,7 +26,7 @@ import math, random
 from tqdm import tqdm
 from scipy.stats import norm
 
-from guppy import hpy
+# from guppy import hpy
 
 ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
 
@@ -88,6 +88,7 @@ class MCTS:
             figures_path=None,
             results_path=None,
             continue_search=False,
+            load_from=None,
             # mcts specific parameters
             acquisition_fn="uct",
             exploration_weight=1.0,
@@ -109,6 +110,7 @@ class MCTS:
         self.figures_path = figures_path
         self.results_path = results_path
         self.continue_search = continue_search
+        self.load_from = load_from
         # mcts specific parameters
         self.exploration_weight = exploration_weight
         self.acquisition_fn = acquisition_fn
@@ -628,6 +630,8 @@ class MCTS:
     def load_results(self):
         # load the search results
         path = join(self.results_path, "search_results.pkl")
+        if not exists(path) and self.load_from:
+            path = self.load_from
         if exists(path):
             with open(path, "rb") as f:
                 data = CPU_Unpickler(f).load()
