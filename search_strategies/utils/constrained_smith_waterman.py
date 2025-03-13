@@ -1092,7 +1092,9 @@ def correct_operations(ops):
                     safe_to_add = False
             if not safe_to_add:
                 if len(op.disabler_ops) > 0 and all([disabler in ops for disabler in op.disabler_ops]):
-                    corrected_ops.remove(op.disabler_ops[0])
+                    for d_op in op.disabler_ops:
+                        if d_op in corrected_ops:
+                            corrected_ops.remove(d_op)
                     safe_to_add = True
                 elif len(op.enabler_ops) > 0:
                     corrected_ops.append(op.enabler_ops[0])
