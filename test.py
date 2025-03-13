@@ -13,13 +13,14 @@ from network import Network
 from evaluation import evaluation_fn
 from arguments import parse_arguments
 from data import get_data_loaders
-from utils import load_config, get_exp_path, Limiter
+from utils import load_config, set_dataset_specific_args, get_exp_path, Limiter
 from functools import partial
 
 
 # parse the arguments
 args = parse_arguments()
 args = load_config(args)
+args = set_dataset_specific_args(args)
 pprint(vars(args))
 
 # set the seed

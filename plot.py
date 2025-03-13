@@ -13,7 +13,7 @@ sys.path.append('..')
 
 from arguments import parse_arguments
 from visualise import visualise_derivation_tree
-from utils import load_config, get_exp_path
+from utils import load_config, set_dataset_specific_args, get_exp_path
 
 
 def compile_fn(node, args):
@@ -116,6 +116,8 @@ if __name__ == "__main__":
     # parse the arguments
     args = parse_arguments()
     args = load_config(args)
+    args = set_dataset_specific_args(args)
+    pprint(vars(args))
 
     # create Plotter instance
     plotter = Plotter(results=None)

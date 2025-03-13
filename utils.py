@@ -23,6 +23,92 @@ class CPU_Unpickler(Unpickler):
         else: return super().find_class(module, name)
 
 
+def set_dataset_specific_args(args):
+    if args.dataset in ["cifar10", "cifar100"]:
+        # training details
+        args.score = "xe"
+        args.epochs = 25
+        args.patience = 25
+        args.test_epochs = 200
+        args.batch_size = 128
+        args.hpo_runs = 1
+        args.lr = 0.1
+        args.momentum = 0.9
+        args.weight_decay = 0.0005
+        # dataset details
+        args.load_in_gpu = False
+        args.channels = 3
+        args.image_size = [32, 32]
+        args.input_mode = "im"
+    elif args.dataset in ["addnist", "language", "multnist", "cifartile", "gutenberg", "isabella", "geoclassing", "chesseract"]:
+        # training details
+        args.score = "xe"
+        args.epochs = 8
+        args.patience = 8
+        args.test_epochs = 64
+        args.batch_size = 256
+        args.hpo_runs = 1
+        args.lr = 0.04
+        args.momentum = 0.9
+        args.weight_decay = 0.0003
+
+    if args.dataset == "cifar10":
+        args.num_classes = 10
+    elif args.dataset == "cifar100":
+        args.num_classes = 100
+    elif args.dataset == "addnist":
+        args.load_in_gpu = True
+        args.num_classes = 20
+        args.channels = 3
+        args.image_size = [28, 28]
+        args.input_mode = "im"
+    elif args.dataset == "language":
+        args.load_in_gpu = True
+        args.num_classes = 10
+        args.channels = 1
+        args.image_size = [24, 24]
+        args.input_mode = "im"
+    elif args.dataset == "multnist":
+        args.load_in_gpu = True
+        args.num_classes = 10
+        args.channels = 3
+        args.image_size = [28, 28]
+        args.input_mode = "im"
+    elif args.dataset == "cifartile":
+        args.load_in_gpu = True
+        args.num_classes = 4
+        args.channels = 3
+        args.image_size = [64, 64]
+        args.input_mode = "im"
+    elif args.dataset == "gutenberg":
+        args.load_in_gpu = True
+        args.num_classes = 6
+        args.channels = 1
+        args.image_size = [27, 18]
+        args.input_mode = "im"
+    elif args.dataset == "isabella":
+        args.load_in_gpu = True
+        args.num_classes = 4
+        args.channels = 1
+        args.image_size = [64, 128]
+        args.input_mode = "im"
+    elif args.dataset == "geoclassing":
+        args.load_in_gpu = True
+        args.num_classes = 10
+        args.channels = 3
+        args.image_size = [64, 64]
+        args.input_mode = "im"
+    elif args.dataset == "chesseract":
+        args.load_in_gpu = True
+        args.num_classes = 3
+        args.channels = 12
+        args.image_size = [18, 18]
+        args.input_mode = "im"
+    else:
+        raise ValueError(f"Unknown dataset: {args.dataset}")
+    return args
+
+
 def load_config(args):
     # load yaml file and overwrite anything in it
     # relative to working dir
