@@ -1,6 +1,9 @@
 from functools import partial
+import os
 from pprint import pprint
+import random
 
+import numpy as np
 import torch
 
 from search_strategies import create_search_strategy
@@ -23,6 +26,16 @@ def compile_fn(node, args):
         vars(args)
     ).to(args.device)
 
+def set_seed(seed):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+
 
 if __name__ == "__main__":
     # parse the arguments
@@ -32,7 +45,7 @@ if __name__ == "__main__":
     pprint(vars(args))
 
     # set the seed
-    torch.manual_seed(args.seed)
+    set_seed(args.seed)
 
     # get data loaders
     train_loader, val_loader, _, _ = get_data_loaders(
