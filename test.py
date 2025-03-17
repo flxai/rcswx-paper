@@ -15,6 +15,7 @@ from arguments import parse_arguments
 from data import get_data_loaders
 from utils import load_config, set_dataset_specific_args, get_exp_path, Limiter
 from functools import partial
+from main import set_seed
 
 
 # parse the arguments
@@ -24,7 +25,7 @@ args = set_dataset_specific_args(args)
 pprint(vars(args))
 
 # set the seed
-torch.manual_seed(args.seed)
+set_seed(args.seed)
 
 # get data loaders
 _, _, trainval_loader, test_loader = get_data_loaders(
