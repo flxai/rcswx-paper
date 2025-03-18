@@ -151,17 +151,34 @@ class Evolver(Sampler):
         # select the parents (and avoid incest)
         parent1 = self.select(population)
         parent2 = self.select(population.without(parent1))
-        print(f"Parent 1: {parent1.accuracy}, {parent1.root}")
+        # print(f"Parent 1: {parent1.id}, {parent1.accuracy}, {parent1.root}")
+        crossover_info = {
+            "crossover_strategy": self.crossover_strategy,
+            "crossover_rate": self.crossover_rate,
+            "parent1": parent1.root, "parent2": None,
+            "parent1_id": parent1.id, "parent2_id": None,
+            "parent1_accuracy": parent1.accuracy, "parent2_accuracy": None,
+        }
         if self.crossover_rate > 0:
-            print(f"Parent 2: {parent2.accuracy}, {parent2.root}")
+            # print(f"Parent 2: {parent2.id}, {parent2.accuracy}, {parent2.root}")
+            crossover_info.update({
+                "parent2": parent2.root,
+                "parent2_id": parent2.id,
+                "parent2_accuracy": parent2.accuracy,
+            })
         # crossover the parents
-        child_root, crossover_info = self.crossover(parent1.root, parent2.root)
-        print(f"Child: {child_root}")
+        child_root, more_crossover_info = self.crossover(parent1.root, parent2.root)
+        crossover_info.update(more_crossover_info)
+        # print(f"Child: {child_root}")
         # mutate the child
         child_root, mutation_info = self.mutate(child_root)
-        print(f"Mutated child: {child_root}")
-        print("child after mutation")
-        print([(node.operation.name, node.id) for node in child_root.serialise()])
+        mutation_info.update({
+            "mutation_strategy": self.mutation_strategy,
+            "mutation_rate": self.mutation_rate,
+        })
+        # print(f"Mutated child: {child_root}")
+        # print("child after mutation")
+        # print([(node.operation.name, node.id) for node in child_root.serialise()])
         ancestry = {**crossover_info, **mutation_info}
         return child_root, ancestry
 
@@ -239,29 +256,11 @@ class Evolver(Sampler):
             # re-infer all params
             try:
                 child1 = self.re_id(child1_copy)
-                # self.limiter.timer.start()
-                # child1 = self.sample(
-                #     input_params=child1_copy.input_params,
-                #     root=child1_copy,
-                #     operations=[
-                #         node.operation
-                #         for node in child1_copy.serialise()
-                #     ],
-                # )
                 successes[0] = True
             except:
                 pass
             try:
                 child2 = self.re_id(child2_copy)
-                # self.limiter.timer.start()
-                # child2 = self.sample(
-                #     input_params=child2_copy.input_params,
-                #     root=child2_copy,
-                #     operations=[
-                #         node.operation
-                #         for node in child2_copy.serialise()
-                #     ],
-                # )
                 successes[1] = True
             except:
                 pass
@@ -270,10 +269,18 @@ class Evolver(Sampler):
         # TODO FIXME return both children?
         # if successes[0] and successes[1]:
         #     return [child1_individual, child2_individual]
+        crossover_info = {
+            "crossover": True,
+            "crossover_node1_id": node1.id, "crossover_node2_id": node2.id,
+            "crossover_node1_depth": node1.depth, "crossover_node2_depth": node2.depth,
+            "crossover_node1_operation_type": node1.operation.type, "crossover_node2_operation_type": node2.operation.type,
+            "crossover_node1_operation_name": node1.operation.name, "crossover_node2_operation_name": node2.operation.name,
+            "crossover_success1": successes[0], "crossover_success2": successes[1],
+        }
         if successes[0]:
-            return child1, {"parent1": parent1, "parent2": parent2, "crossover": True, "crossover_node_id": node1.id}
+            return child1, crossover_info
         elif successes[1]:
-            return child2, {"parent1": parent1, "parent2": parent2, "crossover": True, "crossover_node_id": node2.id}
+            return child2, crossover_info
 
 
     def two_point_crossover(self, parent1, parent2):
@@ -281,32 +288,30 @@ class Evolver(Sampler):
         # TODO Implement
         return this_is_a_stub
 
-    def constrained_smith_waterman_crossover(self, parent1, parent2):
+    def constrained_smith_waterman_crossover(self, parent1, parent2, skewness=0, max_tries=100):
         success = False
         tries = 0
         while not success:
-            if tries > 10:
+            if tries > max_tries:
                 raise RuntimeError("Crossover failed to generate valid children.")
-            child, crossover_operations = constrained_smith_waterman_crossover(parent1, parent2)
+            tries += 1
+            child, crossover_operations, crossover_all_operations, distance_to_parent1, distance_to_parent2, distance_between_parents = constrained_smith_waterman_crossover(
+                parent1, parent2, skewness=skewness
+            )
             # re-infer all params
             try:
                 child = self.re_id(child)
-                # self.limiter.timer.start()
-                # child = self.sample(
-                #     input_params=child.input_params,
-                #     root=None,
-                #     operations=[
-                #         node.operation
-                #         for node in child.serialise()
-                #     ],
-                # )
+                model = child.build(child)
+                model(torch.randn(*self.limiter.batch_shape))
                 return child, {
-                    "parent1": parent1, "parent2": parent2,
-                    "crossover": True, "crossover_operations": crossover_operations
+                    "crossover": True, "crossover_operations": crossover_operations,
+                    "crossover_distance_to_parent1": distance_to_parent1,
+                    "crossover_distance_to_parent2": distance_to_parent2,
+                    "crossover_distance_between_parents": distance_between_parents,
+                    "crossover_all_operations": crossover_all_operations, "crossover_skewness": skewness,
                 }
-            except:
-                pass
-            tries += 1
+            except Exception as e:
+                print(e)
 
     def mutate(self, root):
         if random.random() < self.mutation_rate:
@@ -316,9 +321,13 @@ class Evolver(Sampler):
                 return self.random_mutation(root, allowed_types=["terminal"])
         return root, {"mutation": False}
 
-    def random_mutation(self, root, allowed_types="all"):
+    def random_mutation(self, root, allowed_types=["terminal", "nonterminal"], max_tries=100):
         success = False
+        tries = 0
         while not success:
+            if tries > max_tries:
+                raise RuntimeError("Mutation failed to generate valid children.")
+            tries += 1
             try:
                 # print(f"Mutating architecture:")
                 root_copy = deepcopy(root)
@@ -333,10 +342,15 @@ class Evolver(Sampler):
                 # mutate the node
                 root_mutated = self.mutate_node(root_copy, node)
                 root_mutated = self.re_id(root_mutated)
-                success = True
+                return root_mutated, {
+                    "mutation": True,
+                    "mutation_node_id": node.id,
+                    "mutation_node_depth": node.depth,
+                    "mutation_node_operation_type": node.operation.type,
+                    "mutation_node_operation_name": node.operation.name,
+                }
             except Exception as e:
                 print("MutationError:", e)
-        return root_mutated, {"mutation": False, "mutation_node_id": node.id}
 
     def mutate_node(self, root, node):
         if node.is_leaf():
@@ -351,6 +365,8 @@ class Evolver(Sampler):
             # print(f"Available options: {[op.name for op in node.available_rules['options']]}")
         # sample a new subtree rooted at this node
         self.limiter.timer.start()
+        # print(f"Old subtree:")
+        # print(f"{node}")
         new_node = self.sample(input_params=node.input_params, root=node)
         # print(f"New subtree:")
         # print(f"{new_node}")
@@ -365,7 +381,7 @@ class Evolver(Sampler):
         # print(f"Inputs to sample: {root.input_params}")
         # print(f"Root: {root}")
         # print(f"Operations: {[node.operation.name for node in root.serialise()]}")
-        self.re_id(root)
+        # self.re_id(root)
         # self.limiter.timer.start()
         # self.sample(
         #     input_params=root.input_params,

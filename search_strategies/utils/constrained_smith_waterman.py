@@ -5,7 +5,7 @@ import random
 import time
 import copy
 
-from scipy.stats import truncnorm, bernoulli
+from scipy.stats import skewnorm
 
 from search_state import Operation, DerivationTreeNode
 from grammars import einspace
@@ -43,23 +43,17 @@ class MatrixOperation(object):
         string = self.op_type+" (id: "+str(self.id)+") with a cost of "+str(self.value)+". "
         if len(self.disabler_ops):
             string = string[:-2]+" (disabled by "
-            if type(self.disabler_ops[0]) == list:
-                for branch in self.disabler_ops:
-                    for op in branch:
-                        string += str(op.id)+", "
-            else:
-                for op in self.disabler_ops:
-                    string += str(op.id)+", "
+            for branch in self.disabler_ops:
+                if type(branch) != list: branch = [branch]
+                for op in branch: string += str(op.id)+", "
+            if string[-3:] == "by ": string += "none, "
             string = string[:-2]+")."
         if len(self.enabler_ops):
             string = string[:-2]+" ("*(len(self.disabler_ops)==0)+"; "*(len(self.disabler_ops)>0)+"enabled by "
-            if type(self.enabler_ops[0]) == list:
-                for branch in self.enabler_ops:
-                    for op in branch:
-                        string += str(op.id)+", "
-            else:
-                for op in self.enabler_ops:
-                    string += str(op.id)+", "
+            for branch in self.enabler_ops:
+                if type(branch) != list: branch = [branch]
+                for op in branch: string += str(op.id)+", "
+            if string[-3:] == "by ": string += "none, "
             string = string[:-2]+")."
         return string
         
@@ -449,6 +443,7 @@ class AlignmentMatrix():
                         if (end_operation.op_type == "add_wrap_end") and (end_operation.node1_id == self.model_ops1[i].id): break
 
                     disabler_ops = []
+                    enabler_ops = []
                     adds = [[],[]]
                     muts = [[],[]]
                     rems = [[],[]]
@@ -460,7 +455,8 @@ class AlignmentMatrix():
                         for rem_op in rems[0]:
                             rem_op.enabler_ops = rem_op.enabler_ops + adds[0]
                             rem_op.disabler_ops = rem_op.disabler_ops + [rem_op2 for rem_op2 in rems[0] if rem_op2 != rem_op]
-                        disabler_ops = disabler_ops + rems[0]
+                        disabler_ops = disabler_ops + [rems[0]]
+                        enabler_ops = enabler_ops + [adds[0]*len(rems[0])]
                     for inside_op in self.operations[end_idx+1:sep_idx]:
                         if inside_op.op_type == "add_module": adds[1] = adds[1] + [inside_op]
                         if inside_op.op_type == "mut": muts[1] = muts[1] + [inside_op]
@@ -469,7 +465,8 @@ class AlignmentMatrix():
                         for rem_op in rems[1]:
                             rem_op.enabler_ops = rem_op.enabler_ops + adds[1]
                             rem_op.disabler_ops = rem_op.disabler_ops + [rem_op2 for rem_op2 in rems[1] if rem_op2 != rem_op]
-                        disabler_ops = disabler_ops + rems[1]
+                        disabler_ops = disabler_ops + [rems[1]]
+                        enabler_ops = enabler_ops + [adds[1]*len(rems[1])]
                     
                     self.operations += [MatrixOperation(op_id = len(self.operations),
                                                   op_type = "add_branch2",
@@ -480,7 +477,14 @@ class AlignmentMatrix():
                                                   ii = (sep_operation.i,end_operation.i),
                                                   jj = (sep_operation.j,end_operation.j),
                                                   value = value,
-                                                  disabler_ops = disabler_ops)]
+                                                  disabler_ops = disabler_ops,
+                                                  enabler_ops = enabler_ops)]
+                    print(self.operations[-1])
+                    print(muts, adds, rems)
+                    if (len(adds[0]) and (not len(rems[0])) and (not len(muts[0]))) or (len(adds[1]) and (not len(rems[1])) and (not len(muts[1]))): # If we don't remove anything from any branch, and we have to add everything that's inside,
+                        self.operations[-1].disabler_ops = self.operations[-1].disabler_ops + [[self.operations[-1]],[self.operations[-1]]] # the operation becomes its own disabler for both branches,
+                        self.operations[-1].enabler_ops = self.operations[-1].enabler_ops + adds # only enabled by adding anything inside each branch first
+                    print(self.operations[-1])
                     if value and self.verbose: print(f"\t(+{value}) Parallelize using {self.get_op_name(self.model_ops1[i])} (id: {self.model_ops1[i+1].id}) from indexes {(i,j)} to {(end_operation.i,end_operation.j)}")
                 
                 elif (len(self.model_ops1[i].children) == 3): # If we have some of those "group-M-cat" or "rout-M-rout" situations,
@@ -488,6 +492,7 @@ class AlignmentMatrix():
                         if (end_operation.op_type == "add_wrap_end") and (end_operation.node1_id == self.model_ops1[i].id): break
                     
                     disabler_ops = []
+                    enabler_ops = []
                     adds = []
                     muts = []
                     rems = []
@@ -500,6 +505,7 @@ class AlignmentMatrix():
                             rem_op.enabler_ops = rem_op.enabler_ops + adds
                             rem_op.disabler_ops = rem_op.disabler_ops + [rem_op2 for rem_op2 in rems if rem_op2 != rem_op]
                         disabler_ops = disabler_ops + rems
+                        enabler_ops = enabler_ops + adds*len(rems)
                     
                     self.operations += [MatrixOperation(op_id = len(self.operations),
                                                   op_type = "add_wrap",
@@ -510,8 +516,12 @@ class AlignmentMatrix():
                                                   ii = end_operation.i,
                                                   jj = end_operation.j,
                                                   value = value,
-                                                  disabler_ops = disabler_ops)]
-                    
+                                                  disabler_ops = disabler_ops,
+                                                  enabler_ops = enabler_ops)]
+
+                    if len(adds) and (not len(rems)) and (not len(muts)): # If we don't remove anything, and we have to add everything that's inside,
+                        self.operations[-1].disabler_ops = self.operations[-1].disabler_ops + [self.operations[-1]] # the operation becomes its own disabler,
+                        self.operations[-1].enabler_ops = self.operations[-1].enabler_ops + adds # only enabled by adding anything inside the wrapper first
                     if value and self.verbose: print(f"\t(+{value}) Add wrapper {self.get_op_name(self.model_ops1[i])} (id: {self.model_ops1[i+1].id}) from indexes {(i,j)} to {(end_operation.i,end_operation.j)}")
                 else:
                     self.operations += [MatrixOperation(op_id = len(self.operations),
@@ -558,7 +568,7 @@ class AlignmentMatrix():
                             if inside_op.op_type == "rem": rems += [inside_op]
                         if not len(muts): # if we are not forced to have modules inside regardless of the operations we perform,
                             for rem_op in rems:
-                                rem_op.disabler_ops = rem_op.disabler_ops + [rem_op2 for rem_op2 in rems if rem_op2 != rem_op] # we forbid removing all layers inside the wrap
+                                rem_op.disabler_ops = rem_op.disabler_ops + rems # we forbid removing all layers inside the wrap
                                 rem_op.enabler_ops = rem_op.enabler_ops + adds + [self.operations[-1]] # unless we add any layer, or remove the wrap itself
                     
                     elif (len(self.model_ops2[j].children) == 4): # If we have are removing a branching(2) (that is, serializing some modules),
@@ -575,7 +585,7 @@ class AlignmentMatrix():
                             if inside_op.op_type == "rem": rems[0] += [inside_op]
                         if not len(muts[0]): # if we are not forced to have modules inside the branch regardless of the operations we perform,
                             for rem_op in rems[0]:
-                                rem_op.disabler_ops = rem_op.disabler_ops + [rem_op2 for rem_op2 in rems[0] if rem_op2 != rem_op] # we forbid removing all layers inside the branch
+                                rem_op.disabler_ops = rem_op.disabler_ops + rems[0] # we forbid removing all layers inside the branch
                                 rem_op.enabler_ops = rem_op.enabler_ops + adds[0] + [self.operations[-1]] # unless we add any layer, or remove the wrap itself
                         for inside_op in self.operations[end_idx+1:sep_idx]:
                             if inside_op.op_type == "add_module": adds[1] += [inside_op]
@@ -583,7 +593,7 @@ class AlignmentMatrix():
                             if inside_op.op_type == "rem": rems[1] += [inside_op]
                         if not len(muts[1]):
                             for rem_op in rems[1]:
-                                rem_op.disabler_ops = rem_op.disabler_ops + [rem_op2 for rem_op2 in rems[1] if rem_op2 != rem_op]
+                                rem_op.disabler_ops = rem_op.disabler_ops + rems[1]
                                 rem_op.enabler_ops = rem_op.enabler_ops + adds[1] + [self.operations[-1]]
                         
                     if value and self.verbose: print(f"\t(+{value}) Remove {self.get_op_name(self.model_ops2[j])} (id: {self.model_ops2[j].id}) at indexes {(i,j)}")
@@ -629,11 +639,10 @@ class AlignmentMatrix():
 
     def apply_all_operations(self, selected_ops, offspring):
         for op in selected_ops:
-            if len(op.enabler_ops): # If we have operations to perform beforehand
-                if type(op.enabler_ops[0])==list: # and they are separated by branch requirements
-                    for enabler_branch_ops in op.enabler_ops: # we perform the operations associated to each branch
-                        offspring = self.apply_all_operations([r_op for r_op in enabler_branch_ops if r_op in selected_ops], offspring)
-                else: offspring = self.apply_all_operations([r_op for r_op in op.enabler_ops if r_op in selected_ops], offspring) # Otherwise, we perform all operations
+            if len(op.enabler_ops): # If we have operations to perform beforehand, we perform them
+                for branch in op.enabler_ops:
+                    if type(branch) != list: branch = [branch]
+                    for op in branch: offspring = self.apply_all_operations([r_op for r_op in branch if r_op in selected_ops], offspring)
             offspring = self.apply_op(op, offspring)
         return offspring
 
@@ -1061,62 +1070,67 @@ class AlignmentMatrix():
             if self.verbose and ("wrap_end" not in op.op_type) and ("wrap_sep" not in op.op_type): print("",colored(offspring, "light_grey"), "\n")
         return offspring
 
+
 def num_of_children(node, n = 0):
     for child in node.children:
         n = n + 1 + num_of_children(child)
     return n
 
 
-def sample_quantized_truncated_normal(n):
-    if n >= 3:
-        mean = n / 2
-        std = mean / 2  # Ensures 0 and n are at ±2 sigma
-        a, b = (1 - mean) / std, (n - 1 - mean) / std  # Compute truncation bounds in standard normal space
-        sample = truncnorm.rvs(a, b, loc=mean, scale=std)  # Sample from truncated normal
-        return int(round(sample))  # Quantize to nearest integer
-    elif n == 2:
-        return bernoulli.rvs(0.5)
-    elif n == 1:
-        return 1
+def select_operations(operations, skewness=0):
+    # positive skewness means sampling architectures closer to parent2
+    # negative skewness means sampling architectures closer to parent1
+    combinations = {}
+    for i in range(2**len(operations)):
+        combo_str = bin(i)[2:].zfill(len(operations))
+        ops = [op for idx, op in enumerate(operations) if combo_str[idx] == "1"]
+        value = sum([op.value for op in ops])
+        for op in ops:
+            # We take all enabler operations and separate them by branch (we add non-branch operations as if they were a branch)
+            enablers = [op_en for op_en in op.enabler_ops if type(op_en) == list] + [[op_en for op_en in op.enabler_ops if type(op_en) != list]]
+            # We do the same for the disabler operations
+            disablers = [op_dis for op_dis in op.disabler_ops if type(op_dis) == list] + [[op_dis for op_dis in op.disabler_ops if type(op_dis) != list]]
+            for b in range(len(enablers)):
+                if len(disablers[b]) and all([disabler in ops for disabler in disablers[b]]) and (not any([enabler in ops for enabler in enablers[b]])): value = np.nan
+        if not np.isnan(value): combinations[combo_str] = value
+
+    sknorm = skewnorm(skewness)
+    sample_resolution = 4
+    sample_at = np.linspace(sknorm.ppf(0.01), sknorm.ppf(0.99), int(combinations[max(combinations)]*sample_resolution))
+    samples = sknorm.pdf(sample_at)
+    probs = [samples[int(combinations[c]*sample_resolution)-1] for c in combinations]
+    probs /= np.sum(probs)
+    
+    selected = np.random.choice([c for c in combinations], p = probs)
+    
+    return [operations[i] for i, v in enumerate(selected) if v == "1"]
 
 
-def correct_operations(ops):
-    corrected_ops = []
-    for op in ops:
-        if len(op.enabler_ops) == 0 and len(op.disabler_ops) == 0:
-            corrected_ops.append(op)
-        else:
-            safe_to_add = True
-            if not any([enabler in ops for enabler in op.enabler_ops]):
-                if all([disabler in ops for disabler in op.disabler_ops]):
-                    safe_to_add = False
-            if not safe_to_add:
-                if len(op.disabler_ops) > 0 and all([disabler in ops for disabler in op.disabler_ops]):
-                    for d_op in op.disabler_ops:
-                        if d_op in corrected_ops:
-                            corrected_ops.remove(d_op)
-                    safe_to_add = True
-                elif len(op.enabler_ops) > 0:
-                    corrected_ops.append(op.enabler_ops[0])
-                    safe_to_add = True
-            if safe_to_add:
-                corrected_ops.append(op)
-    return corrected_ops
-
-
-def constrained_smith_waterman_crossover(parent1, parent2):
+def constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
     # build alignment matrix
     matrix = AlignmentMatrix(parent1, parent2, priorities=("mut", "add", "rem"), verbose=False)
     operations = matrix.nontrivial_ops
     if len(operations) == 0:
-        return parent1, []
+        return parent1, [], [], 0, 0, 0
     else:
-        # sample random point along the shortest path
-        k = sample_quantized_truncated_normal(n=len(operations))
-        corrected_ops = correct_operations(operations[:k])
+        # sample random operations along the shortest path
+        selected_ops = select_operations(operations, skewness=skewness)
         # perform the operations to generate the offspring
-        child = matrix.generate_offspring(corrected_ops)
-        return child, corrected_ops
+        child = matrix.generate_offspring(selected_ops)
+        distance_between_parents = sum([op.value for op in matrix.nontrivial_ops])
+        distance_to_parent2 = sum([op.value for op in selected_ops])
+        distance_to_parent1 = distance_between_parents - distance_to_parent2
+        # print("Distances:")
+        # print(f"\tp1 -> p2 = {distance_between_parents}")
+        # print(f"\tp1 -> c = {distance_to_parent1}")
+        # print(f"\tp2 -> c = {distance_to_parent2}")
+        # The triangle inequality doesn't seem to hold for these
+        # since the following assertions fail
+        # m = AlignmentMatrix(parent1, child, priorities=("mut", "add", "rem"), verbose=False)
+        # assert distance_to_parent1 == sum([op.value for op in m.nontrivial_ops]), f"AssertionError: {distance_to_parent1} != {sum([op.value for op in m.nontrivial_ops])}"
+        # m = AlignmentMatrix(parent2, child, priorities=("mut", "add", "rem"), verbose=False)
+        # assert distance_to_parent2 == sum([op.value for op in m.nontrivial_ops]), f"AssertionError: {distance_to_parent2} != {sum([op.value for op in m.nontrivial_ops])}"
+        return child, selected_ops, matrix.nontrivial_ops, distance_to_parent1, distance_to_parent2, distance_between_parents
 
 
 if __name__ == "__main__":

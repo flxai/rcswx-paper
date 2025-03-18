@@ -232,6 +232,19 @@ class DerivationTreeNode:
         # replace the subtree rooted at this node with another node
         # print(f"Replacing node {self.id} with node {node.id}")
         if self.is_root():
+            self = node
+        else:
+            # set the parent/children of the new node to those of the old node
+            node.parent = self.parent
+            # set the child of the old parent to the new node
+            child_idx = self.parent.children.index(self)
+            # print(f"Replacing child {self.id} with child {node.id} at index {child_idx}")
+            self.parent.children[child_idx] = node
+
+    def replace2(self, node):
+        # replace the subtree rooted at this node with another node
+        # print(f"Replacing node {self.id} with node {node.id}")
+        if self.is_root():
             return node
         # set the parent/children of the new node to those of the old node
         node.parent = self.parent
@@ -250,7 +263,6 @@ class DerivationTreeNode:
         self.parent.children[child_idx] = node
         # delete the old node
         del self
-
 
     def __sizeof__(self):
         # computes the total size of this object
