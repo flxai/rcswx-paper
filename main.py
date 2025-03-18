@@ -52,7 +52,7 @@ if __name__ == "__main__":
         dataset=args.dataset,
         batch_size=args.batch_size,
         image_size=args.image_size,
-        root="data",
+        root=args.data_path,
         load_in_gpu=args.load_in_gpu,
         device=args.device,
         log=args.verbose_eval,
