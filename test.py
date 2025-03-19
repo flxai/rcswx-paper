@@ -26,7 +26,7 @@ args = set_dataset_specific_args(args)
 pprint(vars(args))
 
 save_path = join(args.results_path, get_exp_path(args), "best_architecture.csv")
-if not os.path.exists(save_path, exist_ok=True):
+if not os.path.exists(save_path):
     # set the seed
     set_seed(args.seed)
 
