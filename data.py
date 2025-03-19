@@ -238,6 +238,7 @@ def get_data_loaders(
     load_in_gpu=True,
     device=None,
     log=False,
+    seed=0,
 ):
     """Get data loaders for a given dataset."""
     trainvalset = None
@@ -485,8 +486,8 @@ def get_data_loaders(
             print(f"Tried moving {dataset} to GPU memory, but failed.")
             print(f"\t{e}")
 
-    pin_memory = not load_in_gpu
-    num_workers = 0 if load_in_gpu else 4
+    pin_memory = False # not load_in_gpu
+    num_workers = 0 # if load_in_gpu else 4
     train_loader = DataLoader(
         trainset,
         batch_size=batch_size,
@@ -494,6 +495,7 @@ def get_data_loaders(
         pin_memory=pin_memory,
         num_workers=num_workers,
         drop_last=True,
+        worker_init_fn=lambda _: np.random.seed(seed),
     )
     if dataset in ["fsd50k"]:
         val_loader = valset
@@ -505,6 +507,7 @@ def get_data_loaders(
             pin_memory=pin_memory,
             num_workers=num_workers,
             drop_last=False,
+            worker_init_fn=lambda _: np.random.seed(seed),
         )
     if trainvalset is None:
         trainvalset = ConcatDataset([train_loader.dataset, val_loader.dataset])
@@ -515,6 +518,7 @@ def get_data_loaders(
         pin_memory=pin_memory,
         num_workers=num_workers,
         drop_last=True,
+        worker_init_fn=lambda _: np.random.seed(seed),
     )
     if dataset in ["fsd50k"]:
         test_loader = testset
@@ -526,6 +530,7 @@ def get_data_loaders(
             pin_memory=pin_memory,
             num_workers=num_workers,
             drop_last=False,
+            worker_init_fn=lambda _: np.random.seed(seed),
         )
 
     return train_loader, val_loader, trainval_loader, test_loader

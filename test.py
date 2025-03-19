@@ -36,6 +36,7 @@ _, _, trainval_loader, test_loader = get_data_loaders(
     load_in_gpu=args.load_in_gpu,
     device=args.device,
     log=args.verbose_eval,
+    seed=args.seed,
 )
 
 # get batch for batch pass time limiting
