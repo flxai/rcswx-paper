@@ -1209,6 +1209,7 @@ if __name__ == "__main__":
         load_in_gpu=args.load_in_gpu,
         device=args.device,
         log=args.verbose_eval,
+        seed=args.seed,
     )
 
     eval_fn = partial(
