@@ -201,6 +201,7 @@ class Evolver(Sampler):
         return parent1, {"crossover": False}
 
     def one_point_crossover(self, parent1, parent2):
+        root_input_params = deepcopy(parent1.input_params)
         successes = [False, False]
         tries = 0
         while not any(successes):
@@ -255,11 +256,13 @@ class Evolver(Sampler):
 
             # re-infer all params
             try:
+                child1.input_params = root_input_params
                 child1 = self.re_id(child1_copy)
                 successes[0] = True
             except:
                 pass
             try:
+                child2.input_params = root_input_params
                 child2 = self.re_id(child2_copy)
                 successes[1] = True
             except:
@@ -289,6 +292,7 @@ class Evolver(Sampler):
         return this_is_a_stub
 
     def constrained_smith_waterman_crossover(self, parent1, parent2, skewness=0, max_tries=100):
+        root_input_params = deepcopy(parent1.input_params)
         success = False
         tries = 0
         while not success:
@@ -300,6 +304,7 @@ class Evolver(Sampler):
             )
             # re-infer all params
             try:
+                child.input_params = root_input_params
                 child = self.re_id(child)
                 model = child.build(child)
                 model(torch.randn(*self.limiter.batch_shape))
