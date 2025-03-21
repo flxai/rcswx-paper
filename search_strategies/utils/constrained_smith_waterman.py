@@ -479,12 +479,10 @@ class AlignmentMatrix():
                                                   value = value,
                                                   disabler_ops = disabler_ops,
                                                   enabler_ops = enabler_ops)]
-                    print(self.operations[-1])
-                    print(muts, adds, rems)
+                    
                     if (len(adds[0]) and (not len(rems[0])) and (not len(muts[0]))) or (len(adds[1]) and (not len(rems[1])) and (not len(muts[1]))): # If we don't remove anything from any branch, and we have to add everything that's inside,
                         self.operations[-1].disabler_ops = self.operations[-1].disabler_ops + [[self.operations[-1]],[self.operations[-1]]] # the operation becomes its own disabler for both branches,
                         self.operations[-1].enabler_ops = self.operations[-1].enabler_ops + adds # only enabled by adding anything inside each branch first
-                    print(self.operations[-1])
                     if value and self.verbose: print(f"\t(+{value}) Parallelize using {self.get_op_name(self.model_ops1[i])} (id: {self.model_ops1[i+1].id}) from indexes {(i,j)} to {(end_operation.i,end_operation.j)}")
                 
                 elif (len(self.model_ops1[i].children) == 3): # If we have some of those "group-M-cat" or "rout-M-rout" situations,
@@ -965,7 +963,7 @@ class AlignmentMatrix():
                 starting_node = node
 
                 split_pos = [0,0] # We look for the id of the next node after we end the second branch
-                jjj = 0 # which will come from the second model if we already had it in the offspring
+                jjj = 1 # which will come from the second model if we already had it in the offspring
                 if op.jj[1]+jjj < len(self.model_ops2):
                     op_name2 = self.model_ops2[op.jj[1]+jjj].operation.name
                     while self.model_ops2[op.jj[1]+jjj].id not in [n.id for n in offspring.serialise()]:
@@ -978,6 +976,7 @@ class AlignmentMatrix():
                 else:
                     op_name2 = ""
                     split_pos[0] = len(offspring.serialise())
+                    
                 iii = 0 # or from the first model if we didn't
                 if op.ii[1]+iii < len(self.model_ops1):
                     while self.model_ops1[op.ii[1]+iii].id not in [n.id for n in offspring.serialise()]:
@@ -1011,7 +1010,7 @@ class AlignmentMatrix():
                             if (node.parent.operation.name == "sequential") and (offspring.serialise()[split_pos] not in node.serialise()): node = node.parent 
                             else: found_parent_sequential = True
                         else: found_parent_sequential = True
-                
+
                 if (split_pos == len(offspring.serialise())) or ["wrap_" in op_name2, "wrap_" in op_name1][chosen_pos]: end_at_id = -1 # If we are wrapping until the end of the model nor a wrap_end,
                 else: end_at_id = offspring.serialise()[split_pos].id # we save the id of the last node to split the sequentials at further on
                     
@@ -1052,10 +1051,10 @@ class AlignmentMatrix():
                         if split_pos[1] == len(node2.serialise()): break
                 else: split_pos[1] = len(node2.serialise())
 
-                if node2.operation.name == "sequential":
+                if (node2.operation.name == "sequential") and (min(split_pos) < len(node2.serialise())):
                     node2 = self.split_sequentials(node2, node2.serialise()[min(split_pos)].id) # We resequentialize the modules to be able to split the branches right where we want to
                 else: node2 = node2
-                
+
                 if self.verbose: print(">>>Parallelizing modules", colored(str(node2.children[0]), "red"), "and", colored(str(node2.children[1]), "red"), "using", colored(node1.operation.name, "green"))
 
                 parent_node = node2.parent
@@ -1077,7 +1076,7 @@ def num_of_children(node, n = 0):
     return n
 
 
-def select_operations(operations, skewness=0):
+def select_operations(operations, skewness = 0):
     # positive skewness means sampling architectures closer to parent2
     # negative skewness means sampling architectures closer to parent1
     combinations = {}
@@ -1209,7 +1208,6 @@ if __name__ == "__main__":
         load_in_gpu=args.load_in_gpu,
         device=args.device,
         log=args.verbose_eval,
-        seed=args.seed,
     )
 
     eval_fn = partial(
