@@ -25,8 +25,8 @@ def parse_arguments():
     parser.add_argument("--reward_mode", type=str, default="sum", help="The reward mode to use.")
     parser.add_argument("--add_full_paths", action="store_true", help="Add the full paths to the search tree in MCTS.")
     # evolution
-    parser.add_argument("--generational", action="store_true", help="Use generational evolution (as opposed to steady-state).")
-    parser.add_argument("--regularised", action="store_true", help="Use regularised evolution.")
+    parser.add_argument("--generational", type=bool, default=False, help="Use generational evolution (as opposed to steady-state).")
+    parser.add_argument("--regularised", type=bool, default=False, help="Use regularised evolution.")
     parser.add_argument("--population_size", type=int, default=100, help="The population size to use.")
     parser.add_argument("--architecture_seed", type=str, default=None, help="Baseline architectures to seed the search with, separate with '+', e.g. resnet18+vit+mlpmixer.")
     parser.add_argument("--mutation_strategy", type=str, default="random", help="The mutation strategy to use.")
