@@ -239,6 +239,7 @@ def get_data_loaders(
     device=None,
     log=False,
     seed=0,
+    download=False,
 ):
     """Get data loaders for a given dataset."""
     trainvalset = None
@@ -280,7 +281,7 @@ def get_data_loaders(
                     transforms.Normalize((0.1307,), (0.3081,)),
                 ]
             ),
-            download=True,
+            download=download,
         )
         testset = datasets.MNIST(
             root=root,
@@ -292,7 +293,7 @@ def get_data_loaders(
                     transforms.Normalize((0.1307,), (0.3081,)),
                 ]
             ),
-            download=True,
+            download=download,
         )
         trainset, valset = random_split(
             dataset,
@@ -314,7 +315,7 @@ def get_data_loaders(
                     ),
                 ]
             ),
-            download=True,
+            download=download,
         )
         valset = CIFAR10(
             root=root,
@@ -329,7 +330,7 @@ def get_data_loaders(
                     ),
                 ]
             ),
-            download=True,
+            download=download,
         )
         testset = CIFAR10(
             root=root,
@@ -344,7 +345,7 @@ def get_data_loaders(
                     ),
                 ]
             ),
-            download=True,
+            download=download,
         )
     elif dataset == "cifar100":
         trainset = CIFAR100(
@@ -362,7 +363,7 @@ def get_data_loaders(
                     ),
                 ]
             ),
-            download=True,
+            download=download,
         )
         valset = CIFAR100(
             root=root,
@@ -377,7 +378,7 @@ def get_data_loaders(
                     ),
                 ]
             ),
-            download=True,
+            download=download,
         )
         testset = CIFAR100(
             root=root,
@@ -392,7 +393,7 @@ def get_data_loaders(
                     ),
                 ]
             ),
-            download=True,
+            download=download,
         )
     elif dataset == "spherical":
         trainset = Spherical(
