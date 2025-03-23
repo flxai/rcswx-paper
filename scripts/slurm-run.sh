@@ -27,4 +27,4 @@ while read -r mod; do
 done < "$WD/juwels_modules.txt"
 
 # Parallelize via GNU Parallel
-paste -d ' ' "$BATCH_FILE" | parallel --jobs "$GPU_COUNT" --colsep ';' "$SCRIPT_PATH" "{1}" "{%}" "$SLURM_JOB_ID" {2}
+paste -d ' ' "$BATCH_FILE" | parallel --jobs "$GPU_COUNT" --colsep ';' "$SCRIPT_PATH" "../{1}" "{%}" "$SLURM_JOB_ID" {2}
