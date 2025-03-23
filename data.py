@@ -146,7 +146,7 @@ class CIFAR100(datasets.CIFAR100):
             self.indices = torch.load(f'{root}/cifar100/cifar100_valid.indices')
         elif split == "test":
             self.indices = torch.arange(len(self.data))
-        self.data = self.data[self.indices]
+        self.data = torch.tensor(self.data)[self.indices]
         self.targets = torch.tensor(self.targets)[self.indices]
 
 
@@ -164,7 +164,7 @@ class CIFAR10(datasets.CIFAR10):
             self.indices = torch.load(f'{root}/cifar10/cifar10_valid.indices')
         elif split == "test":
             self.indices = torch.arange(len(self.data))
-        self.data = self.data[self.indices]
+        self.data = torch.tensor(self.data)[self.indices]
         self.targets = torch.tensor(self.targets)[self.indices]
 
 
