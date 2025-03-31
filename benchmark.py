@@ -182,7 +182,7 @@ def plot():
 
 @cli.command()
 def plot_extended():
-    """Plot SEPX results with log–log extension, vertical & horizontal reference lines, light grey grid, adjusted markers, and title"""
+    """Plot SEPX results with log–log extension, vertical & horizontal reference lines, light grey grid, and conference font style"""
     import json, glob
     import numpy as np
     import matplotlib.pyplot as plt
@@ -190,124 +190,22 @@ def plot_extended():
     from scipy.stats import gmean
     import matplotlib as mpl
 
-    # Global rcParams for fonts & sizes
-    mpl.rcParams.update({
-        'text.usetex': True,
-        'font.family': 'serif',
-        'font.size': 14,
-        'axes.titlesize': 16,
-        'axes.labelsize': 14,
-        'xtick.labelsize': 14,
-        'ytick.labelsize': 14,
-        'legend.fontsize': 14,
-    })
-    plt.style.use('seaborn-v0_8-paper')
-
-    def compute_geom_stats(times_dict):
-        keys = sorted(times_dict.keys())
-        means, lows, highs = [], [], []
-        for k in keys:
-            vals = np.array(times_dict[k])
-            if len(vals) == 0 or np.any(vals <= 0):
-                continue
-            lv = np.log(vals)
-            mu, sd = lv.mean(), lv.std()
-            means.append(np.exp(mu))
-            lows.append(np.exp(mu - sd))
-            highs.append(np.exp(mu + sd))
-        return keys, means, lows, highs
-
-    files = glob.glob("results/benchmark/*.json")
-    sepx_data = defaultdict(list)
-    cswx_data = defaultdict(list)
-    for f in files:
-        with open(f) as fin:
-            d = json.load(fin)
-        if d["method"] == "sepx":
-            sepx_data[d["n_nodes"]].append(d["time"])
-        elif d["method"] == "cswx":
-            cswx_data[d["n_nodes"]].append(d["time"])
-
-    # Add "1 second" reference by injecting a key if needed (optional)
-    # Here we manually add it to our reference lines
-    ref_yvals = [1, 60, 3600, 86400, 604800, 2592000, 31536000]
-    ref_labels = ["1 second", "1 minute", "1 hour", "1 day", "1 week", "1 month", "1 year"]
-
-    x_sepx, mean_sepx, low_sepx, high_sepx = compute_geom_stats(sepx_data)
-    x_cswx, mean_cswx, low_cswx, high_cswx = compute_geom_stats(cswx_data)
-
-    fig, ax = plt.subplots(figsize=(8,6))
-    ax.tick_params(axis='both', labelsize=14)
-    
-    if x_sepx:
-        line_sepx, = ax.plot(x_sepx, mean_sepx, label='SEPX', color='tab:blue')
-        ax.fill_between(x_sepx, low_sepx, high_sepx, alpha=0.3, color='tab:blue')
-    if x_cswx:
-        line_cswx, = ax.plot(x_cswx, mean_cswx, label='CSWX', color='tab:orange')
-        ax.fill_between(x_cswx, low_cswx, high_cswx, alpha=0.3, color='tab:orange')
-
-    ax.set_xlabel("Number of nodes", fontsize=14)
-    ax.set_ylabel("Runtime (s)", fontsize=14)
-    ax.set_yscale("log")
-    ax.legend(loc='lower right', fontsize=14)
-
-    def plot_log_extension(ax, xs, ys, color, x_max):
-        xs = np.array(xs, dtype=float)
-        ys = np.array(ys, dtype=float)
-        slope, intercept = np.polyfit(np.log(xs), np.log(ys), 1)
-        x_ext = np.linspace(xs[-1], x_max, 50)
-        y_ext = np.exp(intercept + slope * np.log(x_ext))
-        ax.plot(x_ext, y_ext, linestyle=':', color=color, linewidth=2)
-        y_min, y_max = np.min(y_ext), np.max(y_ext)
-        ax.vlines(xs[-1], ymin=y_min, ymax=y_max, color=color, linestyle='--', alpha=0.7)
-        ax.vlines(x_max, ymin=y_min, ymax=y_max, color=color, linestyle='--', alpha=0.7)
-        mid_x = (xs[-1] + x_max) / 2
-        mid_y = np.exp(intercept + slope * np.log(mid_x))
-        # Extrapolation label offset increased by factor 3
-        ax.text(mid_x, mid_y*3, "Extrapolation", color=color, fontsize=14, ha='center', va='bottom')
-
-    if x_sepx:
-        plot_log_extension(ax, x_sepx, mean_sepx, line_sepx.get_color(), 200)
-
-    # Set x_limit to 105% of xmax for reference markers
-    xmin, xmax = ax.get_xlim()
-    x_limit = xmax * 1.05
-    ax.set_xlim(xmin, x_limit)
-    # Plot horizontal reference lines for ref_yvals
-    for y, txt in zip(ref_yvals, ref_labels):
-        ax.hlines(y, xmin, x_limit, color='grey', linestyle='--')
-    # Place grey dot markers and text at 105% of xmax (further left than before)
-    marker_x = x_limit * 0.95
-    for y, txt in zip(ref_yvals, ref_labels):
-        ax.plot([marker_x], [y], marker='o', color='grey')
-        ax.text(marker_x * 0.99, y, txt, va='center', ha='right', color='grey', fontsize=14)
-
-    ax.grid(True, color='lightgrey', linestyle='--', linewidth=0.5)
-    ax.set_title("runtime comparison between csxw and sepx", fontsize=16)
-
-    plt.savefig("results/benchmark/plot_extended_sepx.svg", format='svg')
-    plt.show()
-
-@cli.command()
-def plot_extended():
-    """Plot SEPX results with log–log extension, vertical & horizontal reference lines, light grey grid, adjusted markers, and title"""
-    import json, glob
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from collections import defaultdict
-    from scipy.stats import gmean
-    import matplotlib as mpl
-
-    mpl.rcParams.update({
-        'text.usetex': True,
-        'font.family': 'serif',
-        'font.size': 14,
-        'axes.titlesize': 16,
-        'axes.labelsize': 14,
-        'xtick.labelsize': 14,
-        'ytick.labelsize': 14,
-        'legend.fontsize': 14,
-    })
+    # Set rcParams matching conference style
+    mpl.rcParams['text.usetex'] = True
+    mpl.rcParams['font.family'] = 'serif'
+    mpl.rcParams['font.serif'] = ['Linux Libertine O', 'Libertine']
+    mpl.rcParams['text.latex.preamble'] = (
+        r'\usepackage[nofontspec,semibold,lining]{libertine}'
+        r'\usepackage[T1]{fontenc}'
+        r'\usepackage[varqu,varl,scaled=0.96]{zi4}'
+        r'\usepackage[libertine,vvarbb,upint]{newtxmath}'
+        r'\usepackage[cal=cm,bb=ams,scr=boondoxo]{mathalpha}'
+    )
+    mpl.rcParams['axes.titlesize'] = 16
+    mpl.rcParams['axes.labelsize'] = 14
+    mpl.rcParams['xtick.labelsize'] = 14
+    mpl.rcParams['ytick.labelsize'] = 14
+    mpl.rcParams['legend.fontsize'] = 14
     plt.style.use('seaborn-v0_8-paper')
 
     def compute_geom_stats(times_dict):
@@ -365,12 +263,12 @@ def plot_extended():
         ax.vlines(x_max, ymin=y_min, ymax=y_max, color=color, linestyle='--', alpha=0.7)
         mid_x = (xs[-1] + x_max) / 2
         mid_y = np.exp(intercept + slope * np.log(mid_x))
-        ax.text(mid_x, mid_y*3, "Extrapolation", color=color, fontsize=14, ha='center', va='bottom')
+        ax.text(mid_x, mid_y * 3, "Extrapolation", color=color, fontsize=14, ha='center', va='bottom')
 
     if x_sepx:
         plot_log_extension(ax, x_sepx, mean_sepx, line_sepx.get_color(), 200)
 
-    # Horizontal reference lines for specific runtimes (1 second, 1 minute, 1 hour, 1 day, 1 week, 1 month, 1 year)
+    # Horizontal reference lines for specific runtimes: 1 second, 1 minute, 1 hour, 1 day, 1 week, 1 month, 1 year
     ref_yvals = [1, 60, 3600, 86400, 604800, 2592000, 31536000]
     ref_labels = ["1 second", "1 minute", "1 hour", "1 day", "1 week", "1 month", "1 year"]
     xmin, xmax = ax.get_xlim()
@@ -378,7 +276,7 @@ def plot_extended():
     for y, txt in zip(ref_yvals, ref_labels):
         ax.hlines(y, xmin, x_limit, color='grey', linestyle='--')
     ax.set_xlim(xmin, x_limit)
-    # Place grey dot markers and text as before (using x_limit*1.01)
+    # Place grey dot markers and labels at x_limit*1.01 (as before)
     for y, txt in zip(ref_yvals, ref_labels):
         ax.plot([x_limit], [y], marker='o', color='grey')
         ax.text(x_limit * 1.01, y, txt, va='center', ha='left', color='grey', fontsize=14)
