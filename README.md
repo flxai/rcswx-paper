@@ -86,6 +86,15 @@ $ split -l 4 configs/einspace/evolution_config_list.lst configs/einspace/evoluti
 for fn in /path/to/einsearch/configs/einspace/evolution_config_list_split4_*; do sbatch -D /path/to/einsearch -A hai_1006 --export ALL --time 06:00:00 --ntasks 1 --gpus-per-task 4 /path/to/einsearch/scripts/slurm-run.sh "$fn" 4; done
 ```
 
+#### Visualization
+
+After having run the computations above, the `results` directory will contain the runs' relevant collected information.
+For visualization the following script can be run:
+
+```
+$ ./exploration.py
+```
+
 ### Cost matrix
 
 *This will generate Figure 2 of the publication.*
