@@ -188,6 +188,7 @@ def plot():
     mpl.rcParams['xtick.labelsize'] = 14
     mpl.rcParams['ytick.labelsize'] = 14
     mpl.rcParams['legend.fontsize'] = 14
+    # mpl.rcParams.update({'font.size': 12})
     plt.style.use('seaborn-v0_8-paper')
 
     def compute_geom_stats(times_dict):
@@ -259,7 +260,7 @@ def plot():
         x_all.extend([node_val] * freq_val)
 
     fig, (ax_top, ax_bot) = plt.subplots(
-        2, 1, sharex=True, figsize=(8,5),
+        2, 1, sharex=True, figsize=(6,4),
         gridspec_kw={'height_ratios': [4,1]}
     )
 
@@ -336,7 +337,7 @@ def plot():
         ax_top.axhline(y, color='grey', linestyle='--', linewidth=.6)
         ax_top.text(
             1.01, y, label,
-            va='center', ha='left', color='grey', fontsize=9,
+            va='center', ha='left', color='grey', fontsize=8,
             transform=ax_top.get_yaxis_transform()
         )
 
