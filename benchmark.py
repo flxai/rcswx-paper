@@ -90,7 +90,6 @@ def run_trial(method, n_nodes, seed, cache_file):
             # graph_edit_distance(G1, G2)
         elif method in ["cswx1", "cswx2"]:
             ind1, ind2 = DB.sample(n_nodes, samples=2, rng_seed=seed)
-            # For cswx1, extract the root to get the node with 'operation'
             if method == "cswx1":
                 ind1, ind2 = ind1.root, ind2.root
             t0 = time.time()
@@ -161,16 +160,18 @@ def plot():
     """
     Extended plot:
       - SEPX as before (blue line and fill).
-      - CSWX1 in orange and CSWX2 in red:
-          * Real data: line + fill.
-          * Missing regions: dotted log-fit.
+      - CSWX (CSWX1 in blue and CSWX2 in orange): 
+          * Raw data as scatter ('+' markers).
+          * Log-fit extrapolation over the full range.
+          * Smoothed lower/upper bounds interpolated from residuals.
       - Bottom histogram & KDE as before.
     """
     import json, glob, pickle, os
     import numpy as np
     import matplotlib.pyplot as plt
     from collections import defaultdict
-    from scipy.stats import gmean, gaussian_kde
+    from scipy.stats import gaussian_kde
+    from scipy.interpolate import UnivariateSpline
     import matplotlib as mpl
 
     mpl.rcParams['text.usetex'] = True
@@ -188,8 +189,22 @@ def plot():
     mpl.rcParams['xtick.labelsize'] = 14
     mpl.rcParams['ytick.labelsize'] = 14
     mpl.rcParams['legend.fontsize'] = 14
-    # mpl.rcParams.update({'font.size': 12})
     plt.style.use('seaborn-v0_8-paper')
+
+    # SEPX data remains unchanged.
+    files = glob.glob("results/benchmark/*.json")
+    sepx_data = defaultdict(list)
+    cswx1_data = defaultdict(list)
+    cswx2_data = defaultdict(list)
+    for f in files:
+        with open(f) as fin:
+            d = json.load(fin)
+        if d["method"] == "sepx":
+            sepx_data[d["n_nodes"]].append(d["time"])
+        elif d["method"] == "cswx1":
+            cswx1_data[d["n_nodes"]].append(d["time"])
+        elif d["method"] == "cswx2":
+            cswx1_data[d["n_nodes"]].append(d["time"])
 
     def compute_geom_stats(times_dict):
         xs, means, lows, highs = [], [], [], []
@@ -207,49 +222,105 @@ def plot():
             highs.append(gm * gstd_factor)
         return np.array(xs, dtype=float), np.array(means), np.array(lows), np.array(highs)
 
-    def split_on_gaps(xs, means, lows, highs, gap=1.5):
-        segments = []
-        if len(xs) == 0:
-            return segments
-        start_idx = 0
-        for i in range(1, len(xs)):
-            if (xs[i] - xs[i - 1]) > gap:
-                segments.append((xs[start_idx:i], means[start_idx:i],
-                                 lows[start_idx:i], highs[start_idx:i]))
-                start_idx = i
-        segments.append((xs[start_idx:], means[start_idx:], lows[start_idx:], highs[start_idx:]))
-        return segments
-
-    def log_fit(x_data, y_data, x_vals):
-        slope, intercept = np.polyfit(np.log(x_data), np.log(y_data), 1)
-        return np.exp(intercept + slope * np.log(x_vals))
-
-    files = glob.glob("results/benchmark/*.json")
-    sepx_data = defaultdict(list)
-    cswx1_data = defaultdict(list)
-    cswx2_data = defaultdict(list)
-    for f in files:
-        with open(f) as fin:
-            d = json.load(fin)
-        if d["method"] == "sepx":
-            sepx_data[d["n_nodes"]].append(d["time"])
-        elif d["method"] == "cswx1":
-            cswx1_data[d["n_nodes"]].append(d["time"])
-        elif d["method"] == "cswx2":
-            cswx1_data[d["n_nodes"]].append(d["time"])
-            # Collect both
-            # cswx2_data[d["n_nodes"]].append(d["time"])
-
+    # Plot SEPX (unchanged)
     x_sepx, mean_sepx, low_sepx, high_sepx = compute_geom_stats(sepx_data)
-    x_cswx1, mean_cswx1, low_cswx1, high_cswx1 = compute_geom_stats(cswx1_data)
-    x_cswx2, mean_cswx2, low_cswx2, high_cswx2 = compute_geom_stats(cswx2_data)
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, sharex=True, figsize=(6,3.7),
+        gridspec_kw={'height_ratios': [4,1]}
+    )
+    def plot_sepx(ax, data_dict, label, color):
+        # Gather raw SEPX points.
+        x_raw, y_raw = [], []
+        for k, times in data_dict.items():
+            x_raw.extend([k] * len(times))
+            y_raw.extend(times)
+        if not x_raw:
+            return
+        ax.scatter(x_raw, y_raw, s=7, marker='.', color=color, label='_nolegend')
+        x_arr = np.array(x_raw, dtype=float)
+        y_arr = np.array(y_raw, dtype=float)
+        valid = (x_arr > 0) & (y_arr > 0)
+        x_arr, y_arr = x_arr[valid], y_arr[valid]
+        if len(x_arr) < 2:
+            return
+        # Global log–fit.
+        log_x, log_y = np.log(x_arr), np.log(y_arr)
+        slope, intercept = np.polyfit(log_x, log_y, 1)
+        x_fit = np.linspace(x_arr.min(), 200, 100)
+        y_fit_log = intercept + slope * np.log(x_fit)
+        # Global residual std.
+        global_std = np.std(log_y - (intercept + slope * log_x))
+        # Sliding window width.
+        win = max(1, (x_arr.max() - x_arr.min()) / 20)
+        local_std = []
+        for x0 in x_fit:
+            idx = (x_arr >= x0 - win/2) & (x_arr <= x0 + win/2)
+            if np.sum(idx) >= 3:
+                std_local = np.std(log_y[idx] - (intercept + slope * np.log(x_arr[idx])))
+            else:
+                std_local = global_std
+            local_std.append(std_local)
+        local_std = np.array(local_std)
+        lower = np.exp(y_fit_log - local_std)
+        upper = np.exp(y_fit_log + local_std)
+        ax.fill_between(x_fit, lower, upper, color=color, alpha=0.3)
+        ax.plot(x_fit, np.exp(y_fit_log), linestyle='-', color=color, label=label)
+    plot_sepx(ax_top, sepx_data, 'SEPX', 'tab:red')
 
+    # --- Revised CSWX plotting: scatter + full extrapolation + smoothed bounds ---
+    def plot_cswx(ax, data_dict, label, color):
+        # Gather scatter points.
+        x_raw, y_raw = [], []
+        for k, times in data_dict.items():
+            x_raw.extend([k] * len(times))
+            y_raw.extend(times)
+        if not x_raw:
+            return
+        ax.scatter(x_raw, y_raw, s=7, marker='.', color=color, label='_nolegend')
+        x_arr = np.array(x_raw, dtype=float)
+        y_arr = np.array(y_raw, dtype=float)
+        valid = (x_arr > 0) & (y_arr > 0)
+        x_arr, y_arr = x_arr[valid], y_arr[valid]
+        if len(x_arr) < 2:
+            return
+        # Global log-fit.
+        log_x, log_y = np.log(x_arr), np.log(y_arr)
+        slope, intercept = np.polyfit(log_x, log_y, 1)
+        # Create x grid.
+        x_fit = np.linspace(x_arr.min(), 200, 100)
+        y_fit_log = intercept + slope * np.log(x_fit)
+        # Global residual std.
+        global_std = np.std(log_y - (intercept + slope * log_x))
+        # Define sliding window width.
+        win = max(1, (x_arr.max() - x_arr.min()) / 20)
+        local_std = []
+        for x0 in x_fit:
+            idx = (x_arr >= x0 - win/2) & (x_arr <= x0 + win/2)
+            if np.sum(idx) >= 3:
+                std_local = np.std(log_y[idx] - (intercept + slope * np.log(x_arr[idx])))
+            else:
+                std_local = global_std
+            local_std.append(std_local)
+        local_std = np.array(local_std)
+        lower = np.exp(y_fit_log - local_std)
+        upper = np.exp(y_fit_log + local_std)
+        ax.fill_between(x_fit, lower, upper, color=color, alpha=0.3)
+        ax.plot(x_fit, np.exp(y_fit_log), linestyle='-', color=color, label=label)
+
+
+
+    plot_cswx(ax_top, cswx1_data, 'CSWX', 'tab:blue')
+    plot_cswx(ax_top, cswx2_data, 'CSWX2', 'tab:orange')
+    # --- End CSWX modifications ---
+
+    # Bottom histogram & KDE (unchanged)
     hist_file = 'data/benchmark-hist.pkl'
     if os.path.exists(hist_file):
         with open(hist_file, 'rb') as f:
             counts = pickle.load(f)
     else:
         click.echo("Loading DB to create hist file")
+        from __main__ import DerivationTreeDatabase
         temp_DB = DerivationTreeDatabase(pkl_path="data/benchmark/benchmark.pkl", load_mode="cswx1")
         temp_DB.load()
         counts = temp_DB.get_sample_counts()
@@ -258,71 +329,6 @@ def plot():
     x_all = []
     for node_val, freq_val in counts.items():
         x_all.extend([node_val] * freq_val)
-
-    fig, (ax_top, ax_bot) = plt.subplots(
-        2, 1, sharex=True, figsize=(6,3.7),
-        gridspec_kw={'height_ratios': [4,1]}
-    )
-
-    # Plot SEPX
-    if len(x_sepx) > 0:
-        ax_top.plot(x_sepx, mean_sepx, label='SEPX', color='tab:red')
-        ax_top.fill_between(x_sepx, low_sepx, high_sepx, alpha=0.3, color='tab:red')
-    if len(x_sepx) >= 2:
-        def sepx_log_extension(ax, xs, ys, color, x_max):
-            slope, intercept = np.polyfit(np.log(xs), np.log(ys), 1)
-            x_ext = np.linspace(xs[-1], x_max, 50)
-            y_ext = np.exp(intercept + slope * np.log(x_ext))
-            ax.plot(x_ext, y_ext, linestyle=':', color=color, linewidth=1.2)
-            y_min, y_max = np.min(y_ext), np.max(y_ext)
-            ax.vlines(xs[-1], ymin=y_min, ymax=y_max, color=color, linestyle='--', linewidth=0.7)
-            ax.vlines(x_max, ymin=y_min, ymax=y_max, color=color, linestyle='--', linewidth=0.7)
-            mid_x = (xs[-1] + x_max) / 2
-            mid_y = np.exp(intercept + slope * np.log(mid_x))
-            ax.text(mid_x, mid_y * 3, "Extrapolation", color=color, fontsize=10,
-                    ha='center', va='bottom')
-        sepx_log_extension(ax_top, x_sepx, mean_sepx, 'tab:red', 200)
-
-    # Plot CSWX1 (orange) and CSWX2 (red)
-    def plot_data(segments, label, color):
-        plotted = False
-        for (xx, mm, ll, hh) in segments:
-            lab = label if not plotted else None
-            ax_top.plot(xx, mm, label=lab, color=color)
-            ax_top.fill_between(xx, ll, hh, alpha=0.3, color=color)
-            plotted = True
-
-    cswx1_segments = split_on_gaps(x_cswx1, mean_cswx1, low_cswx1, high_cswx1, gap=1.5)
-    cswx2_segments = split_on_gaps(x_cswx2, mean_cswx2, low_cswx2, high_cswx2, gap=1.5)
-    plot_data(cswx1_segments, 'CSWX', 'tab:blue')
-    plot_data(cswx2_segments, 'CSWX2', 'tab:orange')
-
-    def plot_dotted_segments(ax, x_vals, y_vals, **kwargs):
-        segments = []
-        start = 0
-        for i in range(1, len(x_vals)):
-            if x_vals[i] - x_vals[i - 1] > 1:
-                segments.append((x_vals[start:i], y_vals[start:i]))
-                start = i
-        segments.append((x_vals[start:], y_vals[start:]))
-        for xs, ys in segments:
-            ax.plot(xs, ys, **kwargs)
-
-    # Dotted log-fit for missing regions (for both CSWX1 and CSWX2)
-    for xs, means, color in [(x_cswx1, mean_cswx1, 'tab:blue'), (x_cswx2, mean_cswx2, 'tab:orange')]:
-        if len(xs) >= 2:
-            x_min_val = int(np.min(xs))
-            x_max_val = 200
-            x_fit_range = np.arange(x_min_val, x_max_val + 1, 1, dtype=float)
-            y_fit = log_fit(xs, means, x_fit_range)
-            mask_missing = ~np.isin(x_fit_range, xs)
-            x_missing = x_fit_range[mask_missing]
-            y_missing = y_fit[mask_missing]
-            if len(x_missing) > 0:
-                plot_dotted_segments(
-                    ax_top, x_missing, y_missing,
-                    linestyle=':', color=color, linewidth=1.2, label='_nolegend_'
-                )
 
     ax_top.set_yscale("log")
     ax_top.set_ylabel(r"\textbf{Runtime (s)}")
@@ -355,10 +361,9 @@ def plot():
         ax_kde = ax_bot.twinx()
         ax_kde.set_ylabel(r"\textbf{KDE Density}", color='black', fontsize=8)
         if len(set(x_all)) > 1:
+            from scipy.stats import gaussian_kde
             kde = gaussian_kde(x_all)
-            def custom_cf():
-                return 0.4 * kde.scotts_factor()
-            kde.covariance_factor = custom_cf
+            kde.covariance_factor = lambda: 0.4 * kde.scotts_factor()
             kde._compute_covariance()
             x_vals = np.linspace(x_min, x_max_val, 500)
             kde_pdf = kde(x_vals)
