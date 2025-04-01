@@ -260,7 +260,7 @@ def plot():
         x_all.extend([node_val] * freq_val)
 
     fig, (ax_top, ax_bot) = plt.subplots(
-        2, 1, sharex=True, figsize=(6,4),
+        2, 1, sharex=True, figsize=(6,3.7),
         gridspec_kw={'height_ratios': [4,1]}
     )
 
