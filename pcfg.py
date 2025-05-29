@@ -161,7 +161,7 @@ class PCFG:
         for level, rules in self.grammar.items():
             result.append(f"\t{level}:")
             for i, (rule, prob) in enumerate(zip(rules["options"], rules["probs"])):
-                result.append(f"\t\t{rule.name:<20}(p={prob})")
+                result.append(f"\t\t{rule.name:<26}(p={prob:.3f})")
         return "\n".join(result)
 
     def __sizeof__(self):

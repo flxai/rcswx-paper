@@ -114,6 +114,7 @@ def build_baseline(baseline, input_params=None):
     )
     sampler = Sampler(
         pcfg,
+        limiter,
         "iterative",
         verbose=False
     )
