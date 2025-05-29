@@ -23,6 +23,8 @@ from main import set_seed
 args = parse_arguments()
 args = load_config(args)
 args = set_dataset_specific_args(args)
+args.data_channels = args.channels
+args.channels = 16 if args.search_space == "hnasbench201" else args.channels
 pprint(vars(args))
 
 save_path = join(args.results_path, get_exp_path(args), "best_architecture.csv")
