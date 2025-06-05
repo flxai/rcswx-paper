@@ -64,6 +64,7 @@ if not os.path.exists(save_path):
     limiter = Limiter(
         limits={
             "time": args.time_limit,
+            "restart_time": args.restart_time_limit,
             "max_id": args.max_id_limit,
             "depth": args.depth_limit,
             "memory": args.mem_limit,
