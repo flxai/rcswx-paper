@@ -148,6 +148,7 @@ def get_exp_path(args):
         f"backtrack={args.backtrack}",
         f"mode={args.mode}",
         f"time_limit={args.time_limit}",
+        f"restart_time_limit={args.restart_time_limit}",
         f"max_id_limit={args.max_id_limit}",
         f"depth_limit={args.depth_limit}",
         f"mem_limit={args.mem_limit}",
@@ -228,6 +229,10 @@ class Limiter:
 
         # check if the diff between memory and memory checkpoint is over the limit
         self.diff = (self.memory - self.memory_checkpoint) if self.memory_checkpoint is not None else 0
+        if duration >= self.limits["restart_time"]:
+            if verbose:
+                print(f"Restarting sampling after {duration:.2f} seconds")
+            raise RuntimeError("Restarting sampling after time limit reached")
         if (
             node.depth >= self.limits["depth"] or
             duration >= self.limits["time"] or
