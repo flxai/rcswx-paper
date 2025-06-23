@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from search_strategies.random_search import Sampler
 from baselines import build_baseline, baseline_dict
-from visualise import visualise_derivation_tree
+from visualise import visualise_derivation_tree, visualise_architecture
 from search_strategies.utils import constrained_smith_waterman_crossover
 from plot import Plotter
 
@@ -609,6 +609,13 @@ class Evolution:
             score=reward,
             show=self.visualise,
         )
+        # visualise_architecture(
+        #     root,
+        #     iteration=iteration,
+        #     save_path=self.figures_path,
+        #     score=reward,
+        #     show=self.visualise,
+        # )
         if iteration % self.vis_interval == 0:
             plotter = Plotter({"rewards": self.rewards})
             # find best architecture
@@ -619,6 +626,12 @@ class Evolution:
                 best_root, iteration=f"best_{idx}", score=best_reward, show=False,
                 save_path=self.figures_path
             )
+            # visualise_architecture(
+            #     best_root, score=best_reward,
+            #     iteration=f"best_{idx}",
+            #     save_path=self.figures_path,
+            #     show=False,
+            # )
             # plot results
             plotter.plot_results("rewards", self.figures_path)
             # plot number of parameters

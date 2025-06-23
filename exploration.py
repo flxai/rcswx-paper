@@ -165,6 +165,26 @@ import math
 
 from matplotlib.ticker import FormatStrFormatter
 
+import matplotlib as mpl
+
+# Adhere to conference style
+mpl.rcParams['text.usetex'] = True
+mpl.rcParams['font.family'] = 'serif'
+mpl.rcParams['font.serif'] = ['Linux Libertine O', 'Libertine']
+mpl.rcParams['text.latex.preamble'] = (
+    r'\usepackage[nofontspec,semibold,lining]{libertine}'
+    r'\usepackage[T1]{fontenc}'
+    r'\usepackage[varqu,varl,scaled=0.96]{zi4}'
+    r'\usepackage[libertine,vvarbb,upint]{newtxmath}'
+    r'\usepackage[cal=cm,bb=ams,scr=boondoxo]{mathalpha}'
+)
+mpl.rcParams['axes.titlesize'] = 16
+mpl.rcParams['axes.labelsize'] = 14
+mpl.rcParams['xtick.labelsize'] = 14
+mpl.rcParams['ytick.labelsize'] = 14
+mpl.rcParams['legend.fontsize'] = 14
+# mpl.rcParams.update({'font.size': 12})
+plt.style.use('seaborn-v0_8-paper')
 
 def plot_max_accuracy(seed, datasets, algorithms, d, title, iter_max=1000, rows=2, cols=4):
     # Create a 3x3 grid of subplots
@@ -214,6 +234,10 @@ def plot_max_accuracy(seed, datasets, algorithms, d, title, iter_max=1000, rows=
     leg = fig.legend(handles, labels, loc='lower center', ncol=ncol)
     for i in range(len(legend_names)):
         leg.legend_handles[i].set_color(colors[i])
+
+    for ax in fig.axes:
+        for spine in ax.spines.values():
+            spine.set_linewidth(0.65)
 
     # plt.suptitle(title)
     # Adjust layout

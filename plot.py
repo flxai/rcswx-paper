@@ -49,7 +49,10 @@ class Plotter:
         data = []
         for i, result in enumerate(self.results[key]):
             arch, reward = result[0], result[1]
-            color = colors[node_type[arch[0].operation.name]]
+            if arch[0].operation.name in node_type:
+                color = colors[node_type[arch[0].operation.name]]
+            else:
+                color = colors[0]
             label = arch[0].operation.name
             data.append((i, reward, color, label))
         for i, reward, color, label in tqdm(data, desc=f"Plotting {key}"):
