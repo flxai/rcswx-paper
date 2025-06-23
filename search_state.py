@@ -61,6 +61,7 @@ class DerivationTreeNode:
             level="network",
             parent=None,
             input_params={},
+            output_params={},
             depth=0,
             limiter=None,
             operation=None,
@@ -70,7 +71,7 @@ class DerivationTreeNode:
         self.parent = parent
         self.children = []
         self.input_params = input_params
-        self.output_params = {}
+        self.output_params = output_params
         self.depth = depth
         self.limiter = limiter
         self.operation = operation
@@ -294,6 +295,8 @@ class DerivationTreeNode:
                 brackets = "[]"
             elif "computation" in self.operation.name:
                 brackets = "<>"
+            elif "cell" in self.operation.name or "residual" in self.operation.name or "diamond" in self.operation.name:
+                brackets = "()"
             else:
                 brackets = None
 

@@ -45,6 +45,8 @@ if __name__ == "__main__":
     args = parse_arguments()
     args = load_config(args)
     args = set_dataset_specific_args(args)
+    args.data_channels = args.channels
+    args.channels = 16 if args.search_space == "hnasbench201" else args.channels
     pprint(vars(args))
 
     # set the seed
@@ -73,6 +75,7 @@ if __name__ == "__main__":
     limiter = Limiter(
         limits={
             "time": args.time_limit,
+            "restart_time": args.restart_time_limit,
             "max_id": args.max_id_limit,
             "depth": args.depth_limit,
             "memory": args.mem_limit,

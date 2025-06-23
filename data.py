@@ -146,8 +146,8 @@ class CIFAR100(datasets.CIFAR100):
             self.indices = torch.load(f'{root}/cifar100/cifar100_valid.indices')
         elif split == "test":
             self.indices = torch.arange(len(self.data))
-        self.data = torch.tensor(self.data)[self.indices]
-        self.targets = torch.tensor(self.targets)[self.indices]
+        self.data = self.data[self.indices]  # keep as NumPy array
+        self.targets = [self.targets[i] for i in self.indices]  # list of ints
 
 
 class CIFAR10(datasets.CIFAR10):
@@ -164,8 +164,8 @@ class CIFAR10(datasets.CIFAR10):
             self.indices = torch.load(f'{root}/cifar10/cifar10_valid.indices')
         elif split == "test":
             self.indices = torch.arange(len(self.data))
-        self.data = torch.tensor(self.data)[self.indices]
-        self.targets = torch.tensor(self.targets)[self.indices]
+        self.data = self.data[self.indices]  # keep as NumPy array
+        self.targets = [self.targets[i] for i in self.indices]  # list of ints
 
 
 class NinaPro(Dataset):
@@ -239,7 +239,7 @@ def get_data_loaders(
     device=None,
     log=False,
     seed=0,
-    download=False,
+    download=True,
 ):
     """Get data loaders for a given dataset."""
     trainvalset = None
