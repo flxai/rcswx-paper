@@ -5,6 +5,7 @@ logs/
 configs/
 scripts/
 notebooks/
+search_results/
 
 # data
 data/
