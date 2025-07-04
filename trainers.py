@@ -142,6 +142,7 @@ class Trainer:
             optimizer = optim.SGD(
                 model.parameters(), lr=lr, momentum=mom, weight_decay=wd
             )
+            optimizer.zero_grad()
             scheduler = optim.lr_scheduler.CosineAnnealingLR(
                 optimizer, T_max=self.epochs
             )
@@ -165,12 +166,11 @@ class Trainer:
                     model.train()
                     labels, predictions = [], []
                     try:
-                        for data, target in self.train_dataloader:
+                        for i, (data, target) in enumerate(self.train_dataloader):
                             if not self.config["load_in_gpu"]:
                                 data, target = data.to(self.device), target.to(
                                     self.device
                                 )
-                            optimizer.zero_grad()
                             output = model(data)
 
                             # store labels and predictions to compute metric
@@ -193,7 +193,11 @@ class Trainer:
                             if torch.isnan(loss):
                                 raise ValueError("Training loss became nan")
                             loss.backward()
-                            optimizer.step()
+
+                            # gradient accumulation
+                            if (i % self.config["gradient_accumulation"] == 0) or (i >= len(self.train_dataloader) / self.config["batch_size"] - 1):
+                                optimizer.step()
+                                optimizer.zero_grad()
                         scheduler.step()
 
                         valid_score = self.validate(model, epoch)

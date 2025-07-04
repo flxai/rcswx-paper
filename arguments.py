@@ -42,6 +42,7 @@ def parse_arguments():
     parser.add_argument("--dataset", type=str, default="mnist", help="The dataset to use.")
     parser.add_argument("--epochs", type=int, default=1, help="The number of epochs to train for.")
     parser.add_argument("--batch_size", type=int, default=64, help="The batch size to use.")
+    parser.add_argument("--gradient_accumulation", type=int, default=1, help="The number of gradient accumulation steps to use.")
     parser.add_argument("--channels", type=int, default=1, help="The number of channels in the data.")
     # parser.add_argument("--image_size", type=int, default=28, help="The size of the image.")
     parser.add_argument("--device", type=str, default="cuda:0", help="The device to use.")
