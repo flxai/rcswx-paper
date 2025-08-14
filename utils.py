@@ -290,6 +290,9 @@ class Limiter:
         # node to torch model
         model = self.compile_fn(node)
 
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim(0)
+
         # return false is the model is too large
         if check_memory:
             memcheck = self.check_memory()
