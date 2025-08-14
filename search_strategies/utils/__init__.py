@@ -1,1 +1,2 @@
 from .constrained_smith_waterman import constrained_smith_waterman_crossover
+from .recursive_constrained_smith_waterman import recursive_constrained_smith_waterman_crossover
