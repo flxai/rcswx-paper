@@ -1,3 +1,4 @@
+import backoff
 from collections import deque
 from copy import deepcopy
 import math
@@ -751,6 +752,7 @@ class Evolution:
             # plot number of nodes
             plotter.plot_num_nodes(self.figures_path)
 
+    @backoff.on_exception(backoff.expo, OSError, jitter=backoff.full_jitter, max_time=600)
     def save_results(self, iteration):
         if self.results_path:
             makedirs(self.results_path, exist_ok=True)
