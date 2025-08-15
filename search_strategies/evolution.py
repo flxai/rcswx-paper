@@ -13,6 +13,7 @@ from search_strategies.random_search import Sampler
 from baselines import build_baseline, baseline_dict
 from visualise import visualise_derivation_tree, visualise_architecture
 from search_strategies.utils import constrained_smith_waterman_crossover
+from search_strategies.utils import recursive_constrained_smith_waterman_crossover
 from plot import Plotter
 
 import torch
@@ -199,6 +200,8 @@ class Evolver(Sampler):
             #     return self.two_point_crossover(parent1, parent2)
             elif self.crossover_strategy == "constrained_smith_waterman":
                 return self.constrained_smith_waterman_crossover(parent1, parent2)
+            elif self.crossover_strategy == "recursive_constrained_smith_waterman":
+                return self.recursive_constrained_smith_waterman_crossover(parent1, parent2)
         return parent1, {"crossover": False}
 
     def one_point_crossover(self, parent1, parent2):
@@ -301,6 +304,33 @@ class Evolver(Sampler):
                 raise RuntimeError("Crossover failed to generate valid children.")
             tries += 1
             child, crossover_operations, crossover_all_operations, distance_to_parent1, distance_to_parent2, distance_between_parents = constrained_smith_waterman_crossover(
+                parent1, parent2, skewness=skewness
+            )
+            # re-infer all params
+            try:
+                child.input_params = root_input_params
+                child = self.re_id(child)
+                model = child.build(child)
+                model(torch.randn(*self.limiter.batch_shape))
+                return child, {
+                    "crossover": True, "crossover_operations": crossover_operations,
+                    "crossover_distance_to_parent1": distance_to_parent1,
+                    "crossover_distance_to_parent2": distance_to_parent2,
+                    "crossover_distance_between_parents": distance_between_parents,
+                    "crossover_all_operations": crossover_all_operations, "crossover_skewness": skewness,
+                }
+            except Exception as e:
+                print(e)
+
+    def recursive_constrained_smith_waterman_crossover(self, parent1, parent2, skewness=0, max_tries=100):
+        root_input_params = deepcopy(parent1.input_params)
+        success = False
+        tries = 0
+        while not success:
+            if tries > max_tries:
+                raise RuntimeError("Crossover failed to generate valid children.")
+            tries += 1
+            child, crossover_operations, crossover_all_operations, distance_to_parent1, distance_to_parent2, distance_between_parents = recursive_constrained_smith_waterman_crossover(
                 parent1, parent2, skewness=skewness
             )
             # re-infer all params
