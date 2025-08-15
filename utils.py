@@ -320,7 +320,10 @@ class Limiter:
         # compute the size of extra parameters
         param_size = node.input_params["num_params"] if "num_params" in node.input_params else 0
         # compute size of output tensor
-        output_size = reduce(lambda x, y: x*y, node.output_params['shape']) * node.output_params["branching_factor"]
+        if "shape" not in node.output_params or "branching_factor" not in node.output_params:
+            output_size = 0
+        else:
+            output_size = reduce(lambda x, y: x*y, node.output_params['shape']) * node.output_params["branching_factor"]
         # combine
         memory_size = param_size + output_size
         # print(f"Additional memory added by operation {node.operation.name}: {memory_size * 4 / (1024 * 1024):.2f} MB")

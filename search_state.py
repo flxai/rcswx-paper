@@ -78,6 +78,8 @@ class DerivationTreeNode:
         self.available_rules = None
 
     def initialise(self, operation, stack=None, max_id=None, id_stack=True):
+        if self.limiter:
+            self.limiter.set_memory_checkpoint()
         if stack:
             # might need to find a more effective way to do this
             self.memory = (deepcopy(stack), max_id)
@@ -90,8 +92,9 @@ class DerivationTreeNode:
         if self.operation.is_terminal():
             self.output_params = self.operation.infer(self)
 
-            if not self.limiter.check_build_safe(self):
-                raise MemoryError(f"Individual memory limit reached when initialising: {self}")
+            if self.limiter and not self.limiter.check_build_safe(self):
+                raise MemoryError(f"Individual memory limit reached when initialising terminal node {self.id}")
+        # Non-terminal node
         else:
             self.children = []
             for i, child_level in enumerate(operation.child_levels):
@@ -102,7 +105,13 @@ class DerivationTreeNode:
                     depth=self.depth + 1,
                     limiter=self.limiter,
                 )
+
+                # Preemptive memory check for child
+                if self.limiter and not self.limiter.check_build_safe(child):
+                    raise MemoryError(f"Individual memory limit would be exceeded by child node {child.id}")
+
                 self.add_child(child)
+
         # print(f"initialised node {self.id} with operation {self.operation}")
         for child in reversed(self.children):
             # print(f"Adding child {child.id} to stack")
@@ -112,6 +121,13 @@ class DerivationTreeNode:
                 else:
                     stack.append((child, False))
             max_id = max(child.id, max_id)
+
+        # Post-initialisation memory check
+        if self.limiter and not self.limiter.check_memory():
+            raise MemoryError(f"Memory blowup detected after initialising node {self.id}: "
+                              f"{self.limiter.memory:.1f} MB used, "
+                              f"{self.limiter.diff:.1f} MB added")
+
         return stack, max_id
 
     def add_child(self, child):
@@ -196,22 +212,25 @@ class DerivationTreeNode:
         # print(f"Options left {[op.name for op in self.available_rules['options']]}")
 
     def build(self, node, set_memory_checkpoint=False):
-        if set_memory_checkpoint:
+        if self.limiter and set_memory_checkpoint:
             self.limiter.set_memory_checkpoint()
         #print(f"Check memory: {self.operation}")
 
-        # check memory first
-        if not self.limiter.check_memory():
-            raise MemoryError(f"Memory limit reached: {self.limiter.memory}")
+        # Preemptive checks
+        if self.limiter and not self.limiter.check_memory():
+            raise MemoryError(f"Memory limit reached before building node {self.id}: {self.limiter.memory:.1f} MB")
 
-        if not self.limiter.check_build_safe(node):
-            raise MemoryError(f"Individual memory limit reached when building: {self.operation.name}")
+        if self.limiter and not self.limiter.check_build_safe(node):
+            raise MemoryError(f"Individual memory limit would be exceeded when building node {self.id}")
 
         # build the network
         network = self.operation.build(node)
 
-        # if set_memory_checkpoint:
-        #     self.limiter.reset_memory_checkpoint()
+        # Post-build memory check
+        if self.limiter and not self.limiter.check_memory():
+            raise MemoryError(f"Memory blowup detected after building node {self.id}: "
+                              f"{self.limiter.memory:.1f} MB used, "
+                              f"{self.limiter.diff:.1f} MB added")
 
         return network
 
