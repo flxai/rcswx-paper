@@ -8,6 +8,7 @@ import random
 
 from tqdm import tqdm
 
+from search_state import DerivationTreeNode
 from search_strategies.random_search import Sampler
 from baselines import build_baseline, baseline_dict
 from visualise import visualise_derivation_tree, visualise_architecture
@@ -176,7 +177,7 @@ class Evolver(Sampler):
             "mutation_strategy": self.mutation_strategy,
             "mutation_rate": self.mutation_rate,
         })
-        # print(f"Mutated child: {child_root}")
+        if self.verbose: print(f"Mutated child: {child_root}")
         # print("child after mutation")
         # print([(node.operation.name, node.id) for node in child_root.serialise()])
         ancestry = {**crossover_info, **mutation_info}
@@ -324,7 +325,62 @@ class Evolver(Sampler):
                 return self.random_mutation(root, allowed_types=["terminal", "nonterminal"])
             elif self.mutation_strategy == "random_terminal":
                 return self.random_mutation(root, allowed_types=["terminal"])
+            elif self.mutation_strategy == "repeat":
+                return self.repeat_mutation(root, allowed_types="nonterminal")
         return root, {"mutation": False}
+
+    def repeat_mutation(self, root, allowed_types="nonterminal", max_tries=100):
+        # select a random node to mutate
+        success = False
+        tries = 0
+        while not success:
+            if tries > max_tries:
+                raise RuntimeError("Mutation failed to generate valid children.")
+            tries += 1
+            try:
+                if self.verbose: print(f"Mutating architecture:")
+                root_copy = deepcopy(root)
+
+                if self.verbose: print(f"{root_copy}")
+                root_copy = self.re_id(root_copy)
+
+                nodes = root_copy.serialise()
+                allowed_nodes = [node for node in nodes if node.operation.type in allowed_types]
+                # choose a random node to mutate
+                node = random.choice(allowed_nodes)
+                if self.verbose: print(f"Mutating node:")
+                if self.verbose: print(f"{node}")
+                if self.verbose: print(f"Node input params: {node.input_params}")
+                if self.verbose: print(f"Node output params: {node.output_params}")
+                # put it inside a sequential(4) or sequential(8) module
+                sequential_operation = sequential_module_4 if random.random() < 0.5 else sequential_module_8
+                node_mutated = DerivationTreeNode(
+                    id=node.id,
+                    level=node.level,
+                    parent=node.parent,
+                    input_params=node.input_params,
+                    output_params=node.output_params,
+                    depth=node.depth,
+                    limiter=node.limiter,
+                    operation=sequential_operation,
+                )
+                node_mutated.children = [node]
+                child_idx = node.parent.children.index(node)
+                node.parent.children[child_idx] = node_mutated
+                node.parent = node_mutated
+                # test to see if the new architecture is valid
+                root_mutated = self.re_id(node_mutated.get_root())
+                if self.verbose: print(f"Mutated architecture:")
+                if self.verbose: print(f"{root_mutated}")
+                return root_mutated, {
+                    "mutation": True,
+                    "mutation_node_id": node.id,
+                    "mutation_node_depth": node.depth,
+                    "mutation_node_operation_type": node.operation.type,
+                    "mutation_node_operation_name": node.operation.name,
+                }
+            except Exception as e:
+                print("MutationError:", e)
 
     def random_mutation(self, root, allowed_types=["terminal", "nonterminal"], max_tries=100):
         success = False
@@ -334,16 +390,27 @@ class Evolver(Sampler):
                 raise RuntimeError("Mutation failed to generate valid children.")
             tries += 1
             try:
-                # print(f"Mutating architecture:")
+                if self.verbose: print(f"Mutating architecture:")
                 root_copy = deepcopy(root)
-                # print(f"{root_copy}")
+
+                if self.verbose: print(f"{root_copy}")
+                root_copy = self.re_id(root_copy)
+
                 nodes = root_copy.serialise()
                 allowed_nodes = [node for node in nodes if node.operation.type in allowed_types]
                 # print(allowed_nodes)
                 # choose a random node to mutate
                 node = random.choice(allowed_nodes)
-                # print(f"Mutating node:")
-                # print(f"{node}")
+                if self.verbose: print(f"Mutating node:")
+                if self.verbose: print(f"{node}")
+                if self.verbose: print(f"Node input params: {node.input_params}")
+                if self.verbose: print(f"Node output params: {node.output_params}")
+                # if isinstance(node.operation, RoutingModule):
+                #     from functools import partial
+                #     from grammars.einspace import inherit_first_child, inherit_ith_child
+                #     node.parent.operation.inherit[1] = partial(inherit_ith_child, 0)
+                #     node.parent.operation.inherit[2] = partial(inherit_ith_child, 1)
+                #     print(f"Node parent operation inherit fn: {node.parent.operation.inherit}")
                 # mutate the node
                 root_mutated = self.mutate_node(root_copy, node)
                 root_mutated = self.re_id(root_mutated)
@@ -370,15 +437,15 @@ class Evolver(Sampler):
             # print(f"Available options: {[op.name for op in node.available_rules['options']]}")
         # sample a new subtree rooted at this node
         self.limiter.timer.start()
-        # print(f"Old subtree:")
-        # print(f"{node}")
+        if self.verbose: print(f"Old subtree:")
+        if self.verbose: print(f"{node}")
         new_node = self.sample(input_params=node.input_params, root=node)
-        # print(f"New subtree:")
-        # print(f"{new_node}")
+        if self.verbose: print(f"New subtree:")
+        if self.verbose: print(f"{new_node}")
         # replace the old node with the new subtree
         node.replace(new_node)
-        # print(f"Mutated architecture:")
-        # print(f"{root}")
+        if self.verbose: print(f"Mutated architecture:")
+        if self.verbose: print(f"{root}")
         # test to see if the new architecture is valid
         # this will run through the entire network with the existing operations
         # and raise an error if the network is invalid
@@ -396,9 +463,9 @@ class Evolver(Sampler):
         #         for node in root.serialise()
         #     ],
         # )
-        # print(f"Mutation successful")
-        # print(f"New architecture:")
-        # print(f"{root}")
+        if self.verbose: print(f"Mutation successful")
+        if self.verbose: print(f"New architecture:")
+        if self.verbose: print(f"{root}")
         return root
 
 
@@ -501,8 +568,17 @@ class Evolution:
 
     def learn(self, steps):
         print("-------------")
-        print("Evolution")
+        if self.generational and not self.regularised:
+            print("Generational Evolution")
+        elif not self.generational and self.regularised:
+            print("Regularised Evolution")
         print(f"Steps: {steps}")
+        print(f"Population size: {self.population_size}")
+        print(f"Architecture seed: {self.architecture_seed}")
+        print(f"Mutation strategy: {self.evolver.mutation_strategy}, rate: {self.evolver.mutation_rate}")
+        print(f"Crossover strategy: {self.evolver.crossover_strategy}, rate: {self.evolver.crossover_rate}")
+        print(f"Selection strategy: {self.evolver.selection_strategy}, tournament size: {self.evolver.tournament_size}")
+        print(f"Elitism: {self.elitism}")
         print("--------------")
 
         # populate the first generation
@@ -550,12 +626,13 @@ class Evolution:
                     # take best arch from old 
                     pop_iteration = iteration % self.population_size
                     individual = sorted(self.old_population, key=lambda individual: individual.accuracy)[-(1 + pop_iteration)]
-                    root, ancestry = individual.root, individual.ancestry
-                    print(f"Keeping elite architecture: {individual}")
+                    root, ancestry = deepcopy(individual.root), deepcopy(individual.ancestry)
+                    self.limiter.set_memory_checkpoint()
+                    if self.verbose: print(f"Keeping elite architecture: {individual}")
                 elif mode == "evolve":
                     population = self.old_population if self.generational else self.population
                     root, ancestry = self.evolver.evolve(population)
-                    print(f"Evolved architecture: {root}")
+                    if self.verbose: print(f"Evolved architecture: {root}")
                 sample_duration = self.limiter.timer()
 
                 # check if batch pass does not exceed the time limit
@@ -588,15 +665,19 @@ class Evolution:
         print(f"Iteration {iteration}, reward: {reward:.2f}, sample duration: {sample_duration:.2f}, eval duration: {eval_duration:.2f}")
         print(f"Architecture: {root}")
 
-        if self.regularised:
-            # remove the oldest individual from the population
-            if len(self.population) >= self.population_size:
-                self.population.popleft()
+        # remove the oldest individual from the population
+        if self.regularised and len(self.population) >= self.population_size:
+            old_individual = self.population.popleft()
+            del old_individual.root
+
 
         self.plot(root, reward, iteration)
 
         # save the results
         self.save_results(iteration)
+
+        print(f"Memory after iteration {iteration}: {self.limiter.memory:.1f} MB (+{self.limiter.diff:.1f} MB)")
+
 
     def plot(self, root, reward, iteration):
         # visualise the derivation tree
