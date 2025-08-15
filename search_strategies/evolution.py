@@ -698,7 +698,8 @@ class Evolution:
         # remove the oldest individual from the population
         if self.regularised and len(self.population) >= self.population_size:
             old_individual = self.population.popleft()
-            del old_individual.root
+            if old_individual is not None:
+                del old_individual
 
 
         self.plot(root, reward, iteration)
