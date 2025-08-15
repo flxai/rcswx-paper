@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # scripts/einsearch-progress.py
-# Usage: scripts/einsearch-progress.py <logs_root> [--md] [--sort-rows asc|desc] [--sort-cols asc|desc]
-import re, sys, argparse, math
+# Fast-only (head+tail) parser. O(1) RAM per file.
+# Usage:
+#   scripts/einsearch-progress.py <logs_root> [--md]
+#                                 [--sort-rows asc|desc] [--sort-cols asc|desc]
+#                                 [--head-kb N] [--tail-kb N]
+#                                 [--no-sort]
+import re, sys, argparse, math, os
 from pathlib import Path
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich.console import Console
 from rich.table import Table
+from tqdm import tqdm
 
 # ── Regexes ────────────────────────────────────────────────────────────────────
 RGX_ANSI   = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -16,10 +23,8 @@ RGX_SEED2  = re.compile(r"\bseed[ \t=:]+(\d+)\b", re.I)
 RGX_DATA   = re.compile(r"dataset[ \t=:]+([A-Za-z0-9_.+-]+)", re.I)
 RGX_XSTRAT = re.compile(r"crossover[_ -]*strategy[ \t=:]+([A-Za-z0-9_.+-]+)", re.I)
 RGX_XRATE  = re.compile(r"crossover[_ -]*rate[ \t=:]+([0-9.]+)\b", re.I)
-RGX_MSTRAT = re.compile(r"mutation[_ -]*strategy[ \t=:]+([A-Za-z0-9_.+-]+)", re.I)
 RGX_MRATE  = re.compile(r"mutation[_ -]*rate[ \t=:]+([0-9.]+)\b", re.I)
 RGX_GEN    = re.compile(r"generational[ \t=:]+(True|False)", re.I)
-RGX_EVAL_D = re.compile(r"eval duration:\s*([0-9.]+)")
 
 # Abbreviations
 X_ABBR = {
@@ -31,9 +36,6 @@ X_ABBR = {
 }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-def clean_text(s:str)->str:
-    return RGX_ANSI.sub("", s).replace("\r", "\n")
-
 def secs_to_hm(s: float) -> str:
     s = int(math.floor(s))
     h = s // 3600
@@ -43,67 +45,72 @@ def secs_to_hm(s: float) -> str:
 def trim_zero(x: str) -> str:
     return x[:-2] if x.endswith(".0") else x
 
-def prob_w3(x: str) -> str:
-    """Right-align probability string to width 3: '  0', '0.5', '  1'."""
-    return f"{x:>3}"
+def choose_workers(num_files: int) -> int:
+    c = os.cpu_count() or 1
+    if c <= 1:
+        n = 1
+    elif c < 16:
+        n = max(1, c - 2)
+    else:
+        n = 16
+    return min(n, num_files)
 
-# ── Parsing ────────────────────────────────────────────────────────────────────
-def extract_from_log(p:Path):
-    t = clean_text(p.read_text(errors="ignore"))
+# ── Fast path: read only head + tail (skips runtime sum) ───────────────────────
+def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
+    seed = -1
+    dataset = ""
+    xstrat = ""
+    xrate = ""
+    mrate = ""
+    mode = "Steady-State"
 
-    m = RGX_SEED1.search(t) or RGX_SEED2.search(t)
-    seed = int(m.group(1)) if m else -1
+    with p.open("rb") as f:
+        head = f.read(head_kb * 1024).decode("utf-8", "ignore")
+        m = RGX_SEED1.search(head) or RGX_SEED2.search(head);     seed    = int(m.group(1)) if m else -1
+        m = RGX_DATA.search(head);                                 dataset = m.group(1) if m else ""
+        m = RGX_XSTRAT.search(head);                               xstrat  = m.group(1) if m else ""
+        m = RGX_XRATE.search(head);                                xrate   = m.group(1) if m else ""
+        m = RGX_MRATE.search(head);                                mrate   = m.group(1) if m else ""
+        m = RGX_GEN.search(head);                                  mode    = "Generational" if (m and m.group(1).lower()=="true") else "Steady-State"
 
-    m = RGX_DATA.search(t); dataset = m.group(1) if m else ""
+        sz = f.seek(0, os.SEEK_END)
+        start = max(0, sz - tail_kb * 1024)
+        f.seek(start)
+        tail = f.read().decode("utf-8", "ignore")
 
-    xstrat  = (RGX_XSTRAT.findall(t) or [""])[-1]
-    xrate   = (RGX_XRATE.findall(t)  or [""])[-1]
-    mstrat  = (RGX_MSTRAT.findall(t) or [""])[-1]
-    mrate   = (RGX_MRATE.findall(t)  or [""])[-1]
-    if xrate in {"0","0.0"}:
-        xstrat = "None"
+    # Find last progress in tail; prefer line that has both pair and time.
+    last_val = None
+    for ln in reversed(tail.replace("\r","\n").split("\n")):
+        if not ln: 
+            continue
+        if RGX_PAIR.search(ln) and RGX_TIME.search(ln):
+            try:
+                last_val = int(RGX_PAIR.search(ln).group(1)); break
+            except Exception:
+                pass
+        elif last_val is None:
+            m = RGX_PAIR.search(ln)
+            if m:
+                try: last_val = int(m.group(1))
+                except Exception: pass
+
+    if xrate in {"0","0.0"}: xstrat = "None"
     xabbr = X_ABBR.get(xstrat, xstrat)
     xrate_disp = trim_zero(xrate or "0")
     mut_disp   = trim_zero(mrate or "0")
-
-    m = RGX_GEN.search(t)
-    mode = "Generational" if (m and m.group(1).lower()=="true") else "Steady-State"
-
-    lines = t.splitlines()
-    both = [ln for ln in lines if RGX_PAIR.search(ln) and RGX_TIME.search(ln)]
-    if both:
-        m = RGX_PAIR.search(both[-1]); value = int(m.group(1)) if m else None
-    else:
-        pairs = RGX_PAIR.findall(t); value = int(pairs[-1][0]) if pairs else None
-
-    eval_secs = sum(float(x) for x in RGX_EVAL_D.findall(t)) if "eval duration" in t else 0.0
-
-    row_raw = (mode, xabbr, xrate_disp, mut_disp)  # keep tuple to format later
+    row_raw = (mode, xabbr, xrate_disp, mut_disp)
 
     return {
-        "seed": seed, "dataset": dataset,
-        "value": value, "runtime": eval_secs,
-        "mode": mode, "xabbr": xabbr, "xrate_disp": xrate_disp, "mut_disp": mut_disp,
-        "row_key": row_raw
+        "seed": seed, "dataset": dataset, "value": last_val, "runtime": 0.0,
+        "mode": mode, "xabbr": xabbr, "xrate_disp": xrate_disp, "mut_disp": mut_disp, "row_key": row_raw
     }
 
-# ── Row label formatting ───────────────────────────────────────────────────────
+# ── Row/cell formatting ────────────────────────────────────────────────────────
 def format_row_label(mode: str, xabbr: str, xrate: str, mut: str) -> str:
-    # mode fixed 12, two spaces; xabbr right-aligned 4; (p=___) where prob is width 3; two spaces; mut
     return f"{mode:<12}  {xabbr:>4}(p={xrate})  mut={mut}"
 
-def build_row_labels(meta_df: pd.DataFrame) -> dict:
-    # meta_df columns: row_key (tuple), mode, xabbr, xrate_disp, mut_disp
-    labels = {}
-    for _, r in meta_df.iterrows():
-        k = r["row_key"]
-        labels[k] = format_row_label(r["mode"], r["xabbr"], r["xrate_disp"], r["mut_disp"])
-    return labels
-
-# ── Cell formatting ────────────────────────────────────────────────────────────
 def fmt_console_cell(val, rt):
-    if not rt or rt <= 0:
-        return ""
+    # Always show value; append runtime line only if rt>0.
     if val is None or (isinstance(val, float) and pd.isna(val)):
         l1 = "[grey50]⧖[/]"
     else:
@@ -112,12 +119,10 @@ def fmt_console_cell(val, rt):
             l1 = f"[bold green]{n}[/]" if n >= 1000 else str(n)
         except Exception:
             l1 = str(val)
-    l2 = f"[grey50]⧗ {secs_to_hm(rt)}[/]"
-    return f"{l1}\n{l2}"
+    l2 = f"\n[grey50]⧗ {secs_to_hm(rt)}[/]" if (rt and rt > 0) else ""
+    return f"{l1}{l2}"
 
 def fmt_md_cell(val, rt):
-    if not rt or rt <= 0:
-        return ""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         l1 = "⧖"
     else:
@@ -126,30 +131,47 @@ def fmt_md_cell(val, rt):
             l1 = f"**{n}**" if n >= 1000 else str(n)
         except Exception:
             l1 = str(val)
-    l2 = f"⧗ {secs_to_hm(rt)}"
-    return f"{l1}<br>{l2}"
+    l2 = f"<br>⧗ {secs_to_hm(rt)}" if (rt and rt > 0) else ""
+    return f"{l1}{l2}"
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root", help="Directory with *.txt logs (searched recursively)")
     ap.add_argument("--md", action="store_true", help="Print Markdown tables")
-    ap.add_argument("--sort-rows", choices=["asc","desc"], default="asc")
-    ap.add_argument("--sort-cols", choices=["asc","desc"], default="asc")
+    ap.add_argument("--sort-rows", choices=["asc", "desc"], default="asc")
+    ap.add_argument("--sort-cols", choices=["asc", "desc"], default="asc")
+    ap.add_argument("--head-kb", type=int, default=256, help="Head size (KiB)")
+    ap.add_argument("--tail-kb", type=int, default=1024, help="Tail size (KiB)")
+    ap.add_argument("--no-sort", action="store_true", help="Do not sort file list (faster on many files)")
     args = ap.parse_args()
 
     root = Path(args.root)
     if not root.exists():
         print(f"Not found: {root}", file=sys.stderr); sys.exit(2)
 
+    files = [p for p in root.rglob("*.txt") if p.is_file()]
+    if not files:
+        print("No files.", file=sys.stderr); sys.exit(1)
+    if not args.no_sort:
+        files.sort()
+
+    parser = (lambda p: extract_from_log_fast(p, args.head_kb, args.tail_kb))
+
     recs = []
-    for p in sorted(root.rglob("*.txt")):
-        try:
-            r = extract_from_log(p)
-            if r["dataset"] and r["value"] is not None:
-                recs.append(r)
-        except Exception:
-            pass
+    n_workers = choose_workers(len(files))
+    with ThreadPoolExecutor(max_workers=n_workers) as ex, tqdm(total=len(files), desc="Parsing", unit="file") as pbar:
+        futs = {ex.submit(parser, p): p for p in files}
+        for fu in as_completed(futs):
+            try:
+                r = fu.result()
+                if r["dataset"] and r["value"] is not None:
+                    recs.append(r)
+            except Exception:
+                pass
+            finally:
+                pbar.update(1)
+
     if not recs:
         print("No usable records.", file=sys.stderr); sys.exit(1)
 
@@ -160,21 +182,27 @@ def main():
         for s in seeds:
             sub = df[df.seed == s]
             pt_val = pd.pivot_table(sub, index="row_key", columns="dataset", values="value",   aggfunc="max")
-            pt_rt  = pd.pivot_table(sub, index="row_key", columns="dataset", values="runtime", aggfunc="max")
-            pt_val = pt_val.sort_index(ascending=(args.sort_rows=="asc"))
-            cols   = sorted(pt_val.columns, reverse=(args.sort_cols=="desc"))
+            pt_rt  = pd.pivot_table(sub, index="row_key", columns="dataset", values="runtime", aggfunc="sum")
+            pt_val = pt_val.sort_index(ascending=(args.sort_rows == "asc"))
+            cols   = sorted(pt_val.columns, reverse=(args.sort_cols == "desc"))
             pt_val = pt_val.reindex(cols, axis=1)
             pt_rt  = pt_rt.reindex(index=pt_val.index, columns=pt_val.columns)
 
-            meta = sub[["row_key","mode","xabbr","xrate_disp","mut_disp"]].drop_duplicates("row_key")
-            rename_map = {k: format_row_label(m, x, xr, mu) for k,m,x,xr,mu in meta[["row_key","mode","xabbr","xrate_disp","mut_disp"]].itertuples(index=False, name=None)}
+            meta = sub[["row_key", "mode", "xabbr", "xrate_disp", "mut_disp"]].drop_duplicates("row_key")
+            rename_map = {
+                k: format_row_label(m, x, xr, mu)
+                for k, m, x, xr, mu in meta[["row_key", "mode", "xabbr", "xrate_disp", "mut_disp"]].itertuples(index=False, name=None)
+            }
             pt_val.rename(index=rename_map, inplace=True)
-            pt_rt  = pt_rt.rename(index=rename_map)
+            pt_rt = pt_rt.rename(index=rename_map)
+
+            if pt_val.empty:
+                continue
 
             out = pt_val.astype(object)
             for r in out.index:
                 for c in out.columns:
-                    v  = pt_val.at[r, c] if c in pt_val.columns else None
+                    v = pt_val.at[r, c] if c in pt_val.columns else None
                     rt = float(pt_rt.at[r, c]) if (c in pt_rt.columns and pd.notna(pt_rt.at[r, c])) else 0.0
                     out.at[r, c] = fmt_md_cell(v, rt)
 
@@ -187,10 +215,13 @@ def main():
             sub = df[df.seed == s]
             pt_val = pd.pivot_table(sub, index="row_key", columns="dataset", values="value",   aggfunc="max")
             pt_rt  = pd.pivot_table(sub, index="row_key", columns="dataset", values="runtime", aggfunc="sum")
-            pt_val = pt_val.sort_index(ascending=(args.sort_rows=="asc"))
-            cols   = sorted(pt_val.columns, reverse=(args.sort_cols=="desc"))
+            pt_val = pt_val.sort_index(ascending=(args.sort_rows == "asc"))
+            cols   = sorted(pt_val.columns, reverse=(args.sort_cols == "desc"))
             pt_val = pt_val.reindex(cols, axis=1)
             pt_rt  = pt_rt.reindex(index=pt_val.index, columns=pt_val.columns)
+
+            if pt_val.empty:
+                continue
 
             console.rule(f"Seed {s}", align="left")
             table = Table(show_header=True, header_style="bold", show_lines=False, pad_edge=False)
@@ -199,11 +230,11 @@ def main():
                 table.add_column(str(col), justify="right", no_wrap=True)
 
             for idx in pt_val.index:
-                mode, xabbr, xrate, mut = idx  # row_key tuple
+                mode, xabbr, xrate, mut = idx
                 row_label = format_row_label(mode, xabbr, xrate, mut)
                 cells = []
                 for col in pt_val.columns:
-                    v  = pt_val.at[idx, col] if col in pt_val.columns else None
+                    v = pt_val.at[idx, col] if col in pt_val.columns else None
                     rt = float(pt_rt.at[idx, col]) if (col in pt_rt.columns and pd.notna(pt_rt.at[idx, col])) else 0.0
                     cells.append(fmt_console_cell(v, rt))
                 table.add_row(row_label, *cells)
