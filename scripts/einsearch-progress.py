@@ -28,6 +28,7 @@ RGX_GEN    = re.compile(r"generational[ \t=:]+(True|False)", re.I)
 
 # Abbreviations
 X_ABBR = {
+    "recursive_constrained_smith_waterman": "RCSWX",
     "constrained_smith_waterman": "CSWX",
     "shortest_edit_path": "SEPX",
     "one_point": "1PX",
@@ -107,7 +108,7 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
 
 # ── Row/cell formatting ────────────────────────────────────────────────────────
 def format_row_label(mode: str, xabbr: str, xrate: str, mut: str) -> str:
-    return f"{mode:<12}  {xabbr:>4}(p={xrate})  mut={mut}"
+    return f"{mode:<12}  {xabbr:>5}(p={xrate})  mut={mut}"
 
 def fmt_console_cell(val, rt):
     # Always show value; append runtime line only if rt>0.
