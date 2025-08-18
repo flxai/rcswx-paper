@@ -2,7 +2,7 @@
 # scripts/einsearch-progress.py
 # Fast-only (head+tail) parser. O(1) RAM per file.
 # Usage:
-#   scripts/einsearch-progress.py <logs_root> [--md]
+#   scripts/einsearch-progress.py <logs_root1> [<logs_root2> ...] [--md]
 #                                 [--sort-rows asc|desc] [--sort-cols asc|desc]
 #                                 [--head-kb N] [--tail-kb N]
 #                                 [--no-sort]
@@ -82,7 +82,7 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
     # Find last progress in tail; prefer line that has both pair and time.
     last_val = None
     for ln in reversed(tail.replace("\r","\n").split("\n")):
-        if not ln: 
+        if not ln:
             continue
         if RGX_PAIR.search(ln) and RGX_TIME.search(ln):
             try:
@@ -138,7 +138,7 @@ def fmt_md_cell(val, rt):
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("root", help="Directory with *.txt logs (searched recursively)")
+    ap.add_argument("roots", nargs="+", help="Directories/files with *.txt logs (searched recursively)")
     ap.add_argument("--md", action="store_true", help="Print Markdown tables")
     ap.add_argument("--sort-rows", choices=["asc", "desc"], default="asc")
     ap.add_argument("--sort-cols", choices=["asc", "desc"], default="asc")
@@ -147,11 +147,31 @@ def main():
     ap.add_argument("--no-sort", action="store_true", help="Do not sort file list (faster on many files)")
     args = ap.parse_args()
 
-    root = Path(args.root)
-    if not root.exists():
-        print(f"Not found: {root}", file=sys.stderr); sys.exit(2)
+    # Collect files from all roots (dirs or individual .txt files), dedup while preserving order.
+    files = []
+    seen = set()
+    def add_file(p: Path):
+        try:
+            key = str(p.resolve())
+        except Exception:
+            key = str(p)
+        if key not in seen and p.is_file():
+            seen.add(key)
+            files.append(Path(key))
 
-    files = [p for p in root.rglob("*.txt") if p.is_file()]
+    for root_str in args.roots:
+        root = Path(root_str)
+        if not root.exists():
+            print(f"Not found: {root}", file=sys.stderr)
+            continue
+        if root.is_dir():
+            for p in root.rglob("*.txt"):
+                add_file(p)
+        elif root.is_file() and root.suffix.lower() == ".txt":
+            add_file(root)
+        else:
+            print(f"Skipping non-text file: {root}", file=sys.stderr)
+
     if not files:
         print("No files.", file=sys.stderr); sys.exit(1)
     if not args.no_sort:
