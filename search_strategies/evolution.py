@@ -643,14 +643,13 @@ class Evolution:
                 # start timer
                 self.limiter.timer.start()
 
-                # sample a new individual
-                should_be_random = self.n_tries is not None and n_tries > self.n_tries
+                # generate a new individual
                 if mode == "seed":
                     seed_arch_name = self.architecture_seed.pop(0)
                     seed_arch = baseline_dict[seed_arch_name]
                     root = build_baseline(seed_arch, self.input_params)
                     ancestry = None
-                elif mode == "sample" or should_be_random:
+                elif mode == "sample":
                     root = self.evolver.sample(self.input_params)
                     ancestry = None
                 elif mode == "elite":
@@ -688,6 +687,10 @@ class Evolution:
                 success = True
             except (RuntimeError, MemoryError) as e:
                 print(f"Error in generating new individual: {e}")
+                out_of_tries = self.n_tries is not None and n_tries > self.n_tries
+                if out_of_tries:
+                    print(f"Out of tries ({self.n_tries}), stopping evolution.")
+                    raise e
 
         # add the new individual to the population
         individual = Individual(id=iteration, ancestry=ancestry, root=root, accuracy=reward)
