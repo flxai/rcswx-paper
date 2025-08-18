@@ -125,7 +125,7 @@ class DerivationTreeNode:
         # Post-initialisation memory check
         if self.limiter and not self.limiter.check_memory():
             # FIXME Temporary sleep to not also blowup logs as well
-            time.sleep(10)
+            time.sleep(1)
 
             raise MemoryError(f"Memory blowup detected after initialising node {self.id}: "
                               f"{self.limiter.memory:.1f} MB used, "
