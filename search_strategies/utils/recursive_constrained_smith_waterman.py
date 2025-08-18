@@ -1382,19 +1382,28 @@ def select_operations(operations, skewness = 0):
     
     return [operations[i] for i, v in enumerate(selected) if v == "1"]
 
-
-def recursive_constrained_smith_waterman_crossover(parent1, parent2):
+def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
     # build alignment matrix
     matrix = AlignmentMatrix(parent1, parent2, priorities=("mut", "add", "rem"), verbose=False)
     operations = matrix.nontrivial_ops
     if len(operations) == 0:
-        return parent1, []
+        return parent1, [], [], 0, 0, 0
     else:
         # sample random operations along the shortest path
-        selected_ops = select_operations(operations)
+        selected_ops = select_operations(operations, skewness=skewness)
         # perform the operations to generate the offspring
-        child = matrix.generate_offspring(selected_ops, skewness = 0)
-        return child, corrected_ops
+        child = matrix.generate_offspring(selected_ops)
+        distance_between_parents = matrix.distance # sum([op.value for op in matrix.nontrivial_ops])
+        distance_to_parent2 = sum([op.value for op in selected_ops])
+        distance_to_parent1 = distance_between_parents - distance_to_parent2
+
+        # FIXME Check for dangling pointers
+        child = copy.deepcopy(child)
+        selected_ops = copy.deepcopy(selected_ops)
+        operations = copy.deepcopy(operations)
+        del matrix
+
+        return child, selected_ops, operations, distance_to_parent1, distance_to_parent2, distance_between_parents
 
 def compile_fn(node, args):
     backbone = node.build(node, set_memory_checkpoint=True)
