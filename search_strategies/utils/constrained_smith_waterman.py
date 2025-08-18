@@ -1116,7 +1116,7 @@ def constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
         selected_ops = select_operations(operations, skewness=skewness)
         # perform the operations to generate the offspring
         child = matrix.generate_offspring(selected_ops)
-        distance_between_parents = sum([op.value for op in matrix.nontrivial_ops])
+        distance_between_parents = matrix.distance
         distance_to_parent2 = sum([op.value for op in selected_ops])
         distance_to_parent1 = distance_between_parents - distance_to_parent2
         # print("Distances:")
