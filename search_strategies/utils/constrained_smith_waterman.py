@@ -1129,7 +1129,14 @@ def constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
         # assert distance_to_parent1 == sum([op.value for op in m.nontrivial_ops]), f"AssertionError: {distance_to_parent1} != {sum([op.value for op in m.nontrivial_ops])}"
         # m = AlignmentMatrix(parent2, child, priorities=("mut", "add", "rem"), verbose=False)
         # assert distance_to_parent2 == sum([op.value for op in m.nontrivial_ops]), f"AssertionError: {distance_to_parent2} != {sum([op.value for op in m.nontrivial_ops])}"
-        return child, selected_ops, matrix.nontrivial_ops, distance_to_parent1, distance_to_parent2, distance_between_parents
+
+        # FIXME Check for dangling pointers
+        child = copy.deepcopy(child)
+        selected_ops = copy.deepcopy(selected_ops)
+        operations = copy.deepcopy(operations)
+        del matrix
+
+        return child, selected_ops, operations, distance_to_parent1, distance_to_parent2, distance_between_parents
 
 
 if __name__ == "__main__":
