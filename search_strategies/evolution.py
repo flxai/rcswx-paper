@@ -5,6 +5,7 @@ import math
 from os.path import join, exists
 from os import makedirs, rename, remove
 import pickle
+import psutil
 import random
 
 from tqdm import tqdm
@@ -194,6 +195,8 @@ class Evolver(Sampler):
             return population[-1]
 
     def crossover(self, parent1, parent2):
+        get_memory = lambda: psutil.Process().memory_info().rss / (1024 * 1024)
+        print(f"Memory consumption before crossover: {get_memory()} MiB")
         if random.random() < self.crossover_rate:
             if self.crossover_strategy == "one_point":
                 return self.one_point_crossover(parent1, parent2)
@@ -203,6 +206,7 @@ class Evolver(Sampler):
                 return self.constrained_smith_waterman_crossover(parent1, parent2)
             elif self.crossover_strategy == "recursive_constrained_smith_waterman":
                 return self.recursive_constrained_smith_waterman_crossover(parent1, parent2)
+        print(f"Memory consumption after crossover: {get_memory()} MiB")
         return parent1, {"crossover": False}
 
     def one_point_crossover(self, parent1, parent2):
