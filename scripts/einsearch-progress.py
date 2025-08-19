@@ -26,6 +26,12 @@ RGX_XRATE  = re.compile(r"crossover[_ -]*rate[ \t=:]+([0-9.]+)\b", re.I)
 RGX_MRATE  = re.compile(r"mutation[_ -]*rate[ \t=:]+([0-9.]+)\b", re.I)
 RGX_GEN    = re.compile(r"generational[ \t=:]+(True|False)", re.I)
 
+# Failure detectors (tail scan; add more patterns as needed)
+FAIL_PATTERNS = [
+    r"RuntimeError: Crossover failed to generate valid children\.",
+]
+FAIL_REGEXES = [re.compile(p, re.I) for p in FAIL_PATTERNS]
+
 # Abbreviations
 X_ABBR = {
     "recursive_constrained_smith_waterman": "RCSWX",
@@ -58,6 +64,13 @@ def choose_workers(num_files: int) -> int:
 
 # ── Fast path: read only head + tail (skips runtime sum) ───────────────────────
 def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
+    def tail_has_failure(t: str) -> bool:
+        for ln in t.splitlines():
+            for rx in FAIL_REGEXES:
+                if rx.search(ln):
+                    return True
+        return False
+
     seed = -1
     dataset = ""
     xstrat = ""
@@ -81,6 +94,7 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
 
     # Find last progress in tail; prefer line that has both pair and time.
     last_val = None
+    failed = tail_has_failure(tail)
     for ln in reversed(tail.replace("\r","\n").split("\n")):
         if not ln:
             continue
@@ -102,7 +116,7 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
     row_raw = (mode, xabbr, xrate_disp, mut_disp)
 
     return {
-        "seed": seed, "dataset": dataset, "value": last_val, "runtime": 0.0,
+        "seed": seed, "dataset": dataset, "value": last_val, "runtime": 0.0, "failed": int(bool(failed)),
         "mode": mode, "xabbr": xabbr, "xrate_disp": xrate_disp, "mut_disp": mut_disp, "row_key": row_raw
     }
 
@@ -110,28 +124,32 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
 def format_row_label(mode: str, xabbr: str, xrate: str, mut: str) -> str:
     return f"{mode:<12}  {xabbr:>5}(p={xrate})  mut={mut}"
 
-def fmt_console_cell(val, rt):
+def fmt_console_cell(val, rt, failed=False):
     # Always show value; append runtime line only if rt>0.
     if val is None or (isinstance(val, float) and pd.isna(val)):
-        l1 = "[grey50]⧖[/]"
+        l1 = "[bold red]✗[/]" if failed else "[grey50]⧖[/]"
     else:
         try:
             n = int(val)
-            l1 = f"[bold green]{n}[/]" if n >= 1000 else str(n)
+            if failed:
+                l1 = f"[bold red]{n}[/]"
+            else:
+                l1 = f"[bold green]{n}[/]" if n >= 1000 else str(n)
         except Exception:
-            l1 = str(val)
+            l1 = f"[bold red]{val}[/]" if failed else str(val)
     l2 = f"\n[grey50]⧗ {secs_to_hm(rt)}[/]" if (rt and rt > 0) else ""
     return f"{l1}{l2}"
 
-def fmt_md_cell(val, rt):
+def fmt_md_cell(val, rt, failed=False):
     if val is None or (isinstance(val, float) and pd.isna(val)):
-        l1 = "⧖"
+        l1 = "<span style='color:red'>✗</span>" if failed else "⧖"
     else:
         try:
             n = int(val)
-            l1 = f"**{n}**" if n >= 1000 else str(n)
+            base = f"**{n}**" if n >= 1000 else str(n)
+            l1 = f"<span style='color:red'>{base}</span>" if failed else base
         except Exception:
-            l1 = str(val)
+            l1 = f"<span style='color:red'>{val}</span>" if failed else str(val)
     l2 = f"<br>⧗ {secs_to_hm(rt)}" if (rt and rt > 0) else ""
     return f"{l1}{l2}"
 
@@ -186,7 +204,8 @@ def main():
         for fu in as_completed(futs):
             try:
                 r = fu.result()
-                if r["dataset"] and r["value"] is not None:
+                # Keep records that have a value OR clearly failed.
+                if r["dataset"] and (r["value"] is not None or r.get("failed")):
                     recs.append(r)
             except Exception:
                 pass
@@ -204,10 +223,12 @@ def main():
             sub = df[df.seed == s]
             pt_val = pd.pivot_table(sub, index="row_key", columns="dataset", values="value",   aggfunc="max")
             pt_rt  = pd.pivot_table(sub, index="row_key", columns="dataset", values="runtime", aggfunc="sum")
+            pt_fail= pd.pivot_table(sub, index="row_key", columns="dataset", values="failed",  aggfunc="max")
             pt_val = pt_val.sort_index(ascending=(args.sort_rows == "asc"))
             cols   = sorted(pt_val.columns, reverse=(args.sort_cols == "desc"))
             pt_val = pt_val.reindex(cols, axis=1)
             pt_rt  = pt_rt.reindex(index=pt_val.index, columns=pt_val.columns)
+            pt_fail= pt_fail.reindex(index=pt_val.index, columns=pt_val.columns)
 
             meta = sub[["row_key", "mode", "xabbr", "xrate_disp", "mut_disp"]].drop_duplicates("row_key")
             rename_map = {
@@ -216,6 +237,7 @@ def main():
             }
             pt_val.rename(index=rename_map, inplace=True)
             pt_rt = pt_rt.rename(index=rename_map)
+            pt_fail = pt_fail.rename(index=rename_map)
 
             if pt_val.empty:
                 continue
@@ -225,7 +247,8 @@ def main():
                 for c in out.columns:
                     v = pt_val.at[r, c] if c in pt_val.columns else None
                     rt = float(pt_rt.at[r, c]) if (c in pt_rt.columns and pd.notna(pt_rt.at[r, c])) else 0.0
-                    out.at[r, c] = fmt_md_cell(v, rt)
+                    fl = bool(pt_fail.at[r, c]) if (c in pt_fail.columns and pd.notna(pt_fail.at[r, c])) else False
+                    out.at[r, c] = fmt_md_cell(v, rt, fl)
 
             colalign = ["left"] + ["right"] * out.shape[1]
             print(f"\n### Seed {s}\n")
@@ -236,10 +259,12 @@ def main():
             sub = df[df.seed == s]
             pt_val = pd.pivot_table(sub, index="row_key", columns="dataset", values="value",   aggfunc="max")
             pt_rt  = pd.pivot_table(sub, index="row_key", columns="dataset", values="runtime", aggfunc="sum")
+            pt_fail= pd.pivot_table(sub, index="row_key", columns="dataset", values="failed",  aggfunc="max")
             pt_val = pt_val.sort_index(ascending=(args.sort_rows == "asc"))
             cols   = sorted(pt_val.columns, reverse=(args.sort_cols == "desc"))
             pt_val = pt_val.reindex(cols, axis=1)
             pt_rt  = pt_rt.reindex(index=pt_val.index, columns=pt_val.columns)
+            pt_fail= pt_fail.reindex(index=pt_val.index, columns=pt_val.columns)
 
             if pt_val.empty:
                 continue
@@ -257,7 +282,8 @@ def main():
                 for col in pt_val.columns:
                     v = pt_val.at[idx, col] if col in pt_val.columns else None
                     rt = float(pt_rt.at[idx, col]) if (col in pt_rt.columns and pd.notna(pt_rt.at[idx, col])) else 0.0
-                    cells.append(fmt_console_cell(v, rt))
+                    fl = bool(pt_fail.at[idx, col]) if (col in pt_fail.columns and pd.notna(pt_fail.at[idx, col])) else False
+                    cells.append(fmt_console_cell(v, rt, fl))
                 table.add_row(row_label, *cells)
 
             console.print(table)
