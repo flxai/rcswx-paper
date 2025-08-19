@@ -26,6 +26,9 @@ RGX_XRATE  = re.compile(r"crossover[_ -]*rate[ \t=:]+([0-9.]+)\b", re.I)
 RGX_MRATE  = re.compile(r"mutation[_ -]*rate[ \t=:]+([0-9.]+)\b", re.I)
 RGX_GEN    = re.compile(r"generational[ \t=:]+(True|False)", re.I)
 
+# Consider runs "done" at/above this value (overrides failure coloring)
+DONE_THRESHOLD = 1000
+
 # Failure detectors (tail scan; add more patterns as needed)
 FAIL_PATTERNS = [
     r"RuntimeError: Crossover failed to generate valid children\.",
@@ -131,10 +134,11 @@ def fmt_console_cell(val, rt, failed=False):
     else:
         try:
             n = int(val)
-            if failed:
+            eff_failed = failed and (n < DONE_THRESHOLD)
+            if eff_failed:
                 l1 = f"[bold red]{n}[/]"
             else:
-                l1 = f"[bold green]{n}[/]" if n >= 1000 else str(n)
+                l1 = f"[bold green]{n}[/]" if n >= DONE_THRESHOLD else str(n)
         except Exception:
             l1 = f"[bold red]{val}[/]" if failed else str(val)
     l2 = f"\n[grey50]⧗ {secs_to_hm(rt)}[/]" if (rt and rt > 0) else ""
@@ -146,8 +150,9 @@ def fmt_md_cell(val, rt, failed=False):
     else:
         try:
             n = int(val)
-            base = f"**{n}**" if n >= 1000 else str(n)
-            l1 = f"<span style='color:red'>{base}</span>" if failed else base
+            base = f"**{n}**" if n >= DONE_THRESHOLD else str(n)
+            eff_failed = failed and (n < DONE_THRESHOLD)
+            l1 = f"<span style='color:red'>{base}</span>" if eff_failed else base
         except Exception:
             l1 = f"<span style='color:red'>{val}</span>" if failed else str(val)
     l2 = f"<br>⧗ {secs_to_hm(rt)}" if (rt and rt > 0) else ""
