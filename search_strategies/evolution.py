@@ -196,20 +196,20 @@ class Evolver(Sampler):
 
     def crossover(self, parent1, parent2):
         get_memory = lambda: psutil.Process().memory_info().rss / (1024 * 1024)
-        print(f"Memory consumption before crossover: {get_memory()} MiB")
         if random.random() < self.crossover_rate:
+            print(f"Memory consumption before crossover: {get_memory()} MiB")
             if self.crossover_strategy == "one_point":
                 child, crossover_info = self.one_point_crossover(parent1, parent2)
             # elif self.crossover_strategy == "two_point":
-            #     return self.two_point_crossover(parent1, parent2)
+            #     child, crossover_info self.two_point_crossover(parent1, parent2)
             elif self.crossover_strategy == "constrained_smith_waterman":
                 child, crossover_info = self.constrained_smith_waterman_crossover(parent1, parent2)
             elif self.crossover_strategy == "recursive_constrained_smith_waterman":
                 child, crossover_info = self.recursive_constrained_smith_waterman_crossover(parent1, parent2)
+            print(f"Memory consumption after crossover: {get_memory()} MiB")
         else:
             child = parent1
             crossover_info = {"crossover": False}
-        print(f"Memory consumption after crossover: {get_memory()} MiB")
         return child, crossover_info
 
     def one_point_crossover(self, parent1, parent2, max_tries=10):
