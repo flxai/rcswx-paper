@@ -199,22 +199,25 @@ class Evolver(Sampler):
         print(f"Memory consumption before crossover: {get_memory()} MiB")
         if random.random() < self.crossover_rate:
             if self.crossover_strategy == "one_point":
-                return self.one_point_crossover(parent1, parent2)
+                child, crossover_info = self.one_point_crossover(parent1, parent2)
             # elif self.crossover_strategy == "two_point":
             #     return self.two_point_crossover(parent1, parent2)
             elif self.crossover_strategy == "constrained_smith_waterman":
-                return self.constrained_smith_waterman_crossover(parent1, parent2)
+                child, crossover_info = self.constrained_smith_waterman_crossover(parent1, parent2)
             elif self.crossover_strategy == "recursive_constrained_smith_waterman":
-                return self.recursive_constrained_smith_waterman_crossover(parent1, parent2)
+                child, crossover_info = self.recursive_constrained_smith_waterman_crossover(parent1, parent2)
+        else:
+            child = parent1
+            crossover_info = {"crossover": False}
         print(f"Memory consumption after crossover: {get_memory()} MiB")
-        return parent1, {"crossover": False}
+        return child, crossover_info
 
-    def one_point_crossover(self, parent1, parent2):
+    def one_point_crossover(self, parent1, parent2, max_tries=10):
         root_input_params = deepcopy(parent1.input_params)
         successes = [False, False]
         tries = 0
         while not any(successes):
-            if tries > 10:
+            if tries > max_tries:
                 raise RuntimeError("Crossover failed to generate valid children.")
             # filter valid nodes from parents without copying
             valid_nodes1 = [
@@ -265,16 +268,18 @@ class Evolver(Sampler):
 
             # re-infer all params
             try:
-                child1.input_params = root_input_params
+                child1_copy.input_params = root_input_params
                 child1 = self.re_id(child1_copy)
                 successes[0] = True
-            except:
+            except Exception as e:
+                print(f"Child 1 error in one_point_crossover: {e}")
                 pass
             try:
-                child2.input_params = root_input_params
+                child2_copy.input_params = root_input_params
                 child2 = self.re_id(child2_copy)
                 successes[1] = True
-            except:
+            except Exception as e:
+                print(f"Child 2 error in one_point_crossover: {e}")
                 pass
             tries += 1
 
