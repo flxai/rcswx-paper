@@ -56,6 +56,33 @@ def choose_workers(num_files: int) -> int:
         n = 16
     return min(n, num_files)
 
+def _last_progress_nums(tail_text: str):
+    """Return (num, den) from the last progress-looking line in tail, else (None, None)."""
+    last_num, last_den = None, None
+    for ln in reversed(tail_text.replace("\r", "\n").split("\n")):
+        if not ln:
+            continue
+        m_pair = RGX_PAIR.search(ln)
+        if not m_pair:
+            continue
+        # Prefer a line that also has a time token, else keep first pair-only from end.
+        if RGX_TIME.search(ln) or last_num is None:
+            try:
+                last_num, last_den = int(m_pair.group(1)), int(m_pair.group(2))
+            except Exception:
+                pass
+    return last_num, last_den
+
+def _render_bar(done: float, total: float, width: int = 28, console_mode: bool = True) -> str:
+    done = 0 if pd.isna(done) else float(done)
+    total = 0 if pd.isna(total) else float(total)
+    pct = 0.0 if total <= 0 else min(1.0, max(0.0, done / total))
+    fill = int(round(width * pct))
+    if console_mode:
+        return f"[green]{'█'*fill}[/][grey37]{'░'*(width-fill)}[/]  {int(done)}/{int(total)} ({pct*100:.1f}%)"
+    else:
+        return f"{'█'*fill}{'░'*(width-fill)}  {int(done)}/{int(total)} ({pct*100:.1f}%)"
+
 # ── Fast path: read only head + tail (skips runtime sum) ───────────────────────
 def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
     seed = -1
@@ -79,21 +106,8 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
         f.seek(start)
         tail = f.read().decode("utf-8", "ignore")
 
-    # Find last progress in tail; prefer line that has both pair and time.
-    last_val = None
-    for ln in reversed(tail.replace("\r","\n").split("\n")):
-        if not ln:
-            continue
-        if RGX_PAIR.search(ln) and RGX_TIME.search(ln):
-            try:
-                last_val = int(RGX_PAIR.search(ln).group(1)); break
-            except Exception:
-                pass
-        elif last_val is None:
-            m = RGX_PAIR.search(ln)
-            if m:
-                try: last_val = int(m.group(1))
-                except Exception: pass
+    # Last (num, den) progress in tail
+    last_num, last_den = _last_progress_nums(tail)
 
     if xrate in {"0","0.0"}: xstrat = "None"
     xabbr = X_ABBR.get(xstrat, xstrat)
@@ -102,7 +116,11 @@ def extract_from_log_fast(p: Path, head_kb: int = 256, tail_kb: int = 1024):
     row_raw = (mode, xabbr, xrate_disp, mut_disp)
 
     return {
-        "seed": seed, "dataset": dataset, "value": last_val, "runtime": 0.0,
+        "seed": seed,
+        "dataset": dataset,
+        "value": last_num,
+        "target": (last_den if isinstance(last_den, int) else 1000),
+        "runtime": 0.0,
         "mode": mode, "xabbr": xabbr, "xrate_disp": xrate_disp, "mut_disp": mut_disp, "row_key": row_raw
     }
 
@@ -199,7 +217,31 @@ def main():
     df = pd.DataFrame(recs)
     seeds = sorted(df["seed"].unique())
 
+    # Ensure numeric + defaults
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    if "target" not in df.columns:
+        df["target"] = 1000
+    df["target"] = pd.to_numeric(df["target"], errors="coerce").fillna(1000)
+
+    # Aggregations for progress bars
+    def _agg_progress(group_col, sort_key=None):
+        g = (df.groupby(group_col, dropna=False)
+               .agg(done=("value", "sum"), total=("target", "sum"))
+               .reset_index())
+        if sort_key is not None:
+            order_map = {k:i for i,k in enumerate(sort_key)}
+            g["_ord"] = g[group_col].map(order_map).fillna(len(order_map)).astype(int)
+            g = g.sort_values(["_ord", group_col]).drop(columns="_ord")
+        else:
+            g = g.sort_values(group_col)
+        return g
+
+    by_seed     = _agg_progress("seed")
+    by_dataset  = _agg_progress("dataset")
+    by_method   = _agg_progress("xabbr", sort_key=["CSWX","1PX","None","RCSWX"])
+
     if args.md:
+        # Per-seed tables (Markdown)
         for s in seeds:
             sub = df[df.seed == s]
             pt_val = pd.pivot_table(sub, index="row_key", columns="dataset", values="value",   aggfunc="max")
@@ -230,6 +272,22 @@ def main():
             colalign = ["left"] + ["right"] * out.shape[1]
             print(f"\n### Seed {s}\n")
             print(out.to_markdown(colalign=colalign))
+
+        # Markdown progress summaries
+        def _md_df(g, name_col):
+            pct = (g["done"] / g["total"]).fillna(0.0).clip(0,1)
+            bars = [ _render_bar(d, t, width=28, console_mode=False) for d,t in zip(g["done"], g["total"]) ]
+            out = pd.DataFrame({ name_col: g.iloc[:,0], "done": g["done"].astype(int), "total": g["total"].astype(int),
+                                 "percent": (pct*100).round(1), "bar": bars })
+            return out
+
+        print("\n#### Progress by seed\n")
+        print(_md_df(by_seed, "seed").to_markdown(index=False))
+        print("\n#### Progress by dataset\n")
+        print(_md_df(by_dataset, "dataset").to_markdown(index=False))
+        print("\n#### Progress by method\n")
+        print(_md_df(by_method.rename(columns={'xabbr':'method'}), "method").to_markdown(index=False))
+
     else:
         console = Console()
         for s in seeds:
@@ -261,6 +319,24 @@ def main():
                 table.add_row(row_label, *cells)
 
             console.print(table)
+
+        # Console bars after the tables
+        console.rule("Progress by seed", align="left")
+        for _, r in by_seed.iterrows():
+            console.print(f"[bold]{str(r['seed']):>2}[/]  " + _render_bar(r["done"], r["total"], console_mode=True))
+
+        console.rule("Progress by dataset", align="left")
+        for _, r in by_dataset.iterrows():
+            name = str(r["dataset"])
+            console.print(f"[bold]{name:<12}[/] " + _render_bar(r["done"], r["total"], console_mode=True))
+
+        console.rule("Progress by method", align="left")
+        meth_order = ["CSWX","1PX","None","RCSWX"]
+        by_method_sorted = by_method.copy()
+        by_method_sorted["_ord"] = by_method_sorted["xabbr"].map({m:i for i,m in enumerate(meth_order)}).fillna(99).astype(int)
+        by_method_sorted = by_method_sorted.sort_values(["_ord","xabbr"]).drop(columns="_ord")
+        for _, r in by_method_sorted.iterrows():
+            console.print(f"[bold]{r['xabbr']:<5}[/] " + _render_bar(r["done"], r["total"], console_mode=True))
 
 if __name__ == "__main__":
     main()
