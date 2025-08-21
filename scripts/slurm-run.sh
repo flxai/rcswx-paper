@@ -21,10 +21,12 @@ GPU_COUNT="$2"
 REPO_ROOT="$PWD"
 SCRIPT_PATH="$REPO_ROOT/scripts/run.sh"
 
-# Load JUWELS modules
-while read -r mod; do
-	module load "$mod"
-done < "$REPO_ROOT/scripts/juwels_modules.txt"
+# ZIH Dresden
+module load release/24.10 GCCcore/13.2.0 Python/3.12.3 Graphviz/8.1.0
+
+# DEBUG Just run first single job instead
+# IFS=';' read -r cfg options <<< $(head -1 "$BATCH_FILE")
+# "$SCRIPT_PATH" "$cfg" "0" "$SLURM_JOB_ID" $options
 
 # Parallelize via GNU Parallel
 paste -d ' ' "$BATCH_FILE" | parallel --jobs "$GPU_COUNT" --colsep ';' "$SCRIPT_PATH" "{1}" "{%}" "$SLURM_JOB_ID" {2}
