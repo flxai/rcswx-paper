@@ -1440,7 +1440,7 @@ def select_operations(operations, skewness = 0):
 
 def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
     # build alignment matrix
-    matrix = AlignmentMatrix(parent1, parent2, priorities=("mut", "add", "rem"), verbose=False)
+    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False)
     operations = matrix.nontrivial_ops
     if len(operations) == 0:
         return parent1, [], [], 0, 0, 0
