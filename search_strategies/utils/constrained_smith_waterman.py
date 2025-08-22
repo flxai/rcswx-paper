@@ -12,32 +12,36 @@ from grammars import einspace
 
 
 class MatrixCell():
+    # This class represents each position within a distance matrix and holds information regarding its distance to the starting position and path to get to it 
     def __init__(self):
-        self.top = np.nan
-        self.left = np.nan
-        self.corner = np.nan
-        self.operation = ("", "", "")
-        self.value = np.nan
+        self.top = [] # list of costs of continuing each path of the above matrix position downwards
+        self.left = [] # list of costs of continuing each path of the matrix to the left position rightwards
+        self.corner = [] # list of costs of continuing each path of the matrix on the left-top corner position down-rightwards
+        self.paths = [] # list of valid, most optimal paths to reach this position in the matrix
+        self.value = np.nan # distance to the starting position
 
     def __str__(self):
-        return str(self.value)+" "+str(self.operation)
+        return "Value of "+str(self.value)+" with posible paths:\n"+"".join([str(path)+"\n" for path in self.paths])
 
     def __repr__(self):
         return str(self)
 
 class MatrixOperation(object):
+    # This class represents a single mutation to be performed to a model
     def __init__(self, op_id = None, op_type = None, node1_id = None, node2_id = None, i = None, j = None, ii = None, jj = None, value = 0, disabler_ops = [], enabler_ops = []):
-        self.id = op_id
-        self.op_type = op_type
-        self.node1_id = node1_id
-        self.node2_id = node2_id
-        self.i = i
-        self.j = j
-        self.ii = ii
-        self.jj = jj
-        self.value = value
-        self.disabler_ops = disabler_ops
-        self.enabler_ops = enabler_ops
+        self.id = op_id # operation identifier
+        self.op_type = op_type # operation type (can be "add", "rem" or "mut", followed by "_wrap" if dealing with a routing or branching module, and followed by "_sep" or "end" if dealing with the branch/routing separator tokens)
+        self.i = i # corresponding matrix row (position within the first model) where the operation starts
+        self.j = j # corresponding matrix column (position within the second model) where the operation starts
+        self.ii = ii # corresponding matrix row (position within the first model) where the operation ends if it's a branching or routing wrapper, or list of rows for the branch separators in a branching(2)
+        self.jj = jj # corresponding matrix column (position within the first model) where the operation ends if it's a branching or routing wrapper, or list of columns for the branch separators in a branching(2)
+        self.node1_id = node1_id # id of the node corresponding to position i of the first model
+        self.node2_id = node2_id # id of the node corresponding to position j of the second model
+        self.value = value # cost of performing this operation
+        self.i_swapped = False # wether or not we had to swap the order of the branches in the first model if it corresponds to a branching(2) node
+        self.j_swapped = False # wether or not we had to swap the order of the branches in the second model if it corresponds to a branching(2) node
+        self.disabler_ops = disabler_ops # list of operations that, if all are performed, do not allow this operation to be performed (for instance, removing all nodes that would be wrapped by a routing dissable the adition of said routing, as it would have nothing to wrap around)
+        self.enabler_ops = enabler_ops # list of operations that, if any is performed, allow this operation to be performed even if all disabler operations are performed (in the above example, adding anoder node to be wrapped by the routing before adding the routing)
         
     def __str__(self):
         string = self.op_type+" (id: "+str(self.id)+") with a cost of "+str(self.value)+". "
@@ -64,19 +68,22 @@ class MatrixOperation(object):
         return self.id == other.id
     
 class DecoyOperation(object):
+    # This is an empty class to hold an operation name as if it was a node's operation
     def __init__(self, name):
         self.name = name
     
-class Decoy(object):
-    # This is an empty object to hold an operation name and id as if it was a node, as well as its parent and branch number if it is an end of branch decoy node
+class DecoyNode(object):
+    # This is an empty class to hold an operation name and id as if it was a node, as well as its parent and branch number if it is an branch separator/end decoy node
     def __init__(self, parent, branch, name):
-        self.parent = parent
-        self.branch = branch
-        self.operation = DecoyOperation(name)
-        self.children = []
-        if parent is not None: self.id = self.parent.id
-        else: self.id = -1
+        self.parent = parent # node parent (branching/routing to close if it is a separator/end node)
+        self.operation = DecoyOperation(name) # decoy operation
+        self.children = [] # decoy nodes (start node and separator/end nodes) do not have children
+        if parent is None: self.id = -1 # if it is a start node, its id will be -1
+        else: self.id = self.parent.id # otherwise, it will inherit the id of the node it is separating/closing
 
+    def is_root(self):
+        return self.parent is not None
+        
     def __eq__(self, other):
         if isinstance(other, self.__class__):
             return self.id == other.id
