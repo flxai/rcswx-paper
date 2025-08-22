@@ -428,7 +428,7 @@ class AlignmentMatrixRecursive():
                         if matrix_jswap != None: matrix_jswap[i][j] = matrix[i][j]
                         if matrix_ijswap != None: matrix_ijswap[i][j] = matrix[i][j]
                         # We can collapse the paths on the corners, which are really unlikely to contain the best path, to avoid computing unnecesary garbage in really big matrices
-                        if self.collapse_corners and (((j+start_j-i-start_i) >= len(self.model_ops2)*0.5) or ((i+start_i-j-start_j) >= len(self.model_ops1)*0.5)): matrix[i][j].paths = matrix[i][j].paths[:4]
+                        if self.collapse_corners and (((j+start_j-i-start_i) >= len(self.model_ops2)*0.25) or ((i+start_i-j-start_j) >= len(self.model_ops1)*0.25)): matrix[i][j].paths = [matrix[i][j].paths[0]]
 
             # We get rid of the paths that we don't need anymore to compute anything with to liberate some memory
             if (model_ops1 == self.model_ops1) and (model_ops2 == self.model_ops2): 
