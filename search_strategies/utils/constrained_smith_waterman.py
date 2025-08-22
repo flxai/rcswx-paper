@@ -93,28 +93,31 @@ class Decoy(object):
         return str(self)
 
 class AlignmentMatrix():
-    def __init__(self, model1, model2, priorities = ("mut", "add", "rem"), verbose = False):
+    
+    def __init__(self, model1, model2, priorities = ("mut", "add", "rem"), collapse_corners = False, verbose = False):
         self.verbose = verbose
+        self.collapse_corners = collapse_corners
         
         self.model1 = model1
         if self.verbose: print("First model: ", self.model1)
-        self.model_ops1 = [Decoy(None, None, "start_node")] + self.breakdown(self.model1)
+        self.model_ops1 = [DecoyNode(None, None, "start_node")] + self.breakdown(self.model1)
         
         self.model2 = model2
         self.new_node_id = max([node.id for node in self.model1.serialise()])+1
         for node in self.model2.serialise(): self.update_id(node) # We reset the models' node ids to avoid anything breaking when we combine the models because of id repetitions
         if self.verbose: print("Second model:", self.model2)
-        self.model_ops2 = [Decoy(None, None, "start_node")] + self.breakdown(self.model2)
+        self.model_ops2 = [DecoyNode(None, None, "start_node")] + self.breakdown(self.model2)
         
-        self.size = (len(self.model_ops1), len(self.model_ops2))
         self.operations = []
         self.nontrivial_ops = []
         
         timestart = time.time()
         self.matrix = self.calculate_matrix(self.model_ops1, self.model_ops2, corner_value = 0, corner_op = "start", block_idx=(0,0), priorities = priorities)
-        self.trace_back()
+        self.compute_time = time.time()-timestart
+        #self.trace_back()
+        self.distance = self.matrix[-1][-1].value
         if self.verbose:
-            print("\nDistance of", round(self.distance,2), "through", len(self.nontrivial_ops), "operations, calculated in" ,round((time.time()-timestart)*1000,2),"ms."), self.print_alignment_matrix()
+            print("\nDistance of", round(self.distance,2), "through", len(self.nontrivial_ops), "operations, calculated in" ,round((self.compute_time)*1000,2),"ms."), self.visualize_alignment_matrix()
     
     def breakdown(self, model):
         model_ops = []
@@ -129,7 +132,7 @@ class AlignmentMatrix():
             if len(model.children) > 2: # If we have several children (branchings, routings...)
                 for child in range(1, len(model.children)-1): # And then add all the children's operations to the list
                     model_ops += self.breakdown(model.children[child])
-                    model_ops += [Decoy(model, child, "wrap_"+"end"*(child==len(model.children)-2)+"separator"*(child!=len(model.children)-2))]
+                    model_ops += [DecoyNode(model, child, "wrap_"+"end"*(child==len(model.children)-2)+"sep"*(child!=len(model.children)-2))]
                 
             else:
                 for child in model.children:
@@ -137,66 +140,67 @@ class AlignmentMatrix():
     
         return model_ops
                 
-    def print_alignment_matrix(self):
-        matrix = self.matrix
-        model_ops1 = self.model_ops1
-        model_ops2 = self.model_ops2
-            
+    def visualize_alignment_matrix(self, matrix = None, model_ops1 = None, model_ops2 = None, i = -1, j = -1, saveimg = False):
+        if matrix == None: matrix = self.matrix
+        if model_ops1 == None: model_ops1 = self.model_ops1
+        if model_ops2 == None: model_ops2 = self.model_ops2
+        
         size = (len(matrix), len(matrix[0]))
         m = np.zeros(size)
-        for i in range(size[0]):
-            for j in range(size[1]):
-                if "add" in matrix[i][j].operation: plt.plot((j, j), (i-1, i), "dimgrey")
-                if "wrap_add" in matrix[i][j].operation:
-                    ii = 0
-                    while self.model_ops1[i-ii] != self.model_ops1[i].parent:
-                        ii += 1
-                    y = np.linspace(i, i-ii, ii*3)
-                    x = (ii/8)**2-((y-i+ii/2)/4)**2
-                    x = j-x/np.max(x)/2*(0.3*ii**0.5)
-                    plt.plot(x, y, "-", color="darkgrey")
-                    plt.plot((j-0.15, j, j+0.15), (i-0.25,i,i-0.25), "-", color="darkgrey")
-                if "rem" in matrix[i][j].operation: plt.plot((j-1, j), (i, i), "dimgrey")
-                if "wrap_rem" in matrix[i][j].operation:
-                    jj = 0
-                    while self.model_ops2[j-jj] != self.model_ops2[j].parent:
-                        jj += 1
-                    x = np.linspace(j, j-jj, jj*3)
-                    y = (jj/8)**2-((x-j+jj/2)/4)**2
-                    y = i-y/np.max(y)/2*(0.3*jj**0.5)
-                    plt.plot(x, y, "-", color="darkgrey")
-                    plt.plot((j-0.25, j, j-0.25), (i-0.15,i,i+0.15), "-", color="darkgrey")
-                if "mut" in matrix[i][j].operation: plt.plot((j-1, j), (i-1, i), "dimgrey")
-                m[i,j] = matrix[i][j].value
-
-        max_weight = 0
-        for op in self.nontrivial_ops:
-            max_weight = max(max_weight, op.value)
-        max_weight += 0.00000001
-        
+        for ii in range(size[0]):
+            for jj in range(size[1]):
+                m[ii,jj] = matrix[ii][jj].value
+        plt.figure(figsize=(10,10))
         plt.imshow(m)
         ax = plt.gca()
         ax.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
         ax.set_yticks([x for x in range(len(model_ops1))])
-        ax.set_yticklabels([self.get_op_name(op) for op in model_ops1], rotation=0)
+        ax.set_yticklabels([self.get_op_name(op).replace("wrap", self.get_op_name(op.parent)) if "wrap" in self.get_op_name(op) else self.get_op_name(op) for op in model_ops1], rotation=0)
         ax.set_xticks([y for y in range(len(model_ops2))])
-        ax.set_xticklabels([self.get_op_name(op) for op in model_ops2], rotation=90)
+        ax.set_xticklabels([self.get_op_name(op).replace("wrap", self.get_op_name(op.parent)) if "wrap" in self.get_op_name(op) else self.get_op_name(op) for op in model_ops2], rotation=90)
         
-        for op in self.nontrivial_ops:
-            weight_color = (0, (op.value)/max_weight, 1-(op.value)/max_weight)
-            if "add_" in op.op_type: plt.plot((op.j, op.j), (op.i-1, op.i), color = weight_color, linewidth=2)
-                #plt.scatter((op.jj), (op.ii), color = weight_color, linewidth=2)
-            if "add_wrap" == op.op_type: plt.plot((op.j, op.j), (op.i-1, op.i), color = weight_color, linewidth=2)
-            if "rem" == op.op_type: plt.plot((op.j-1, op.j), (op.i, op.i), color = weight_color, linewidth=2)
-            if "mut" == op.op_type: plt.plot((op.j-1, op.j), (op.i-1, op.i), color = weight_color, linewidth=2)
-        
-        plt.show() 
+        length = 1.7
+        interval_space = 0.7
+        linewidth = 2
+        cmap = plt.get_cmap('ocean', len(matrix[i][j].paths))
+        for p, path in enumerate(matrix[i][j].paths):
+            position = [0, 0]
+            for op in path[1:]:
+                color = cmap(p)
+                #plt.text(op.j-0.5, op.i+0.2, str(matrix[op.i][op.j].value), color="cyan", fontsize=12, rotation=45, rotation_mode='default')
+                pos_i = np.linspace(position[0], op.i, 30)
+                pos_j = np.linspace(position[1], op.j, 30)
+                linestyle = "-"
+                if abs(op.i-position[0]) > 1:
+                    pos_j += np.linspace(-0.6, 0.6, 30)**2-0.6**2
+                    linestyle = "--"
+                if abs(op.j-position[1]) > 1:
+                    pos_i += np.linspace(-0.6, 0.6, 30)**2-0.6**2
+                    linestyle = "--"
+                    
+                plt.plot(pos_j, pos_i, linestyle = linestyle, color = color, linewidth=(0.75+op.value)*linewidth)
+                position  = [op.i, op.j]
+                
+        if saveimg: plt.savefig("example_crossover.svg", format='svg')
+        plt.show()
 
     def get_op_name(self, op):
         #if ("routing" in op.operation.name or "branching" in op.operation.name) and op.operation.name != "branching(2)": return op.operation.name.split("(")[0]
         if "computation" in op.operation.name: return "comp<"+op.children[0].operation.name+">"
         else: return op.operation.name
-        
+
+    def print_m(self, matrix):
+        m = np.array([[row.value for row in column] for column in matrix])
+        plt.imshow(m)
+        plt.colorbar()
+        ax = plt.gca()
+        ax.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+        ax.set_yticks([x for x in range(len(self.model_ops1))])
+        ax.set_yticklabels([self.get_op_name(op).replace("wrap", self.get_op_name(op.parent)) if "wrap" in self.get_op_name(op) else self.get_op_name(op) for op in self.model_ops1], rotation=0)
+        ax.set_xticks([y for y in range(len(self.model_ops2))])
+        ax.set_xticklabels([self.get_op_name(op).replace("wrap", self.get_op_name(op.parent)) if "wrap" in self.get_op_name(op) else self.get_op_name(op) for op in self.model_ops2], rotation=90)
+        plt.show()
+    
     def calculate_matrix(self, model_ops1, model_ops2, corner_value = 0, corner_op = "start", block_idx=(0,0), priorities = ("mut", "add", "rem")):
         priorities = sorted(range(len(priorities)), key=priorities.__getitem__)
         priorities = sorted(range(len(priorities)), key=priorities.__getitem__)
@@ -210,84 +214,113 @@ class AlignmentMatrix():
             matrix.append(row)
 
         for i in range(size[0]):
-            matrix[i][0].left = np.inf 
-            matrix[i][0].corner = np.inf
+            matrix[i][0].left = [np.inf ]
+            matrix[i][0].corner = [np.inf]
         for j in range(size[1]):
-            matrix[0][j].top = np.inf 
-            matrix[0][j].corner = np.inf 
+            matrix[0][j].top = [np.inf]
+            matrix[0][j].corner = [np.inf] 
         matrix[0][0].value = 0
-        matrix[0][0].operation = ["start"]
+        matrix[0][0].paths = [[MatrixOperation(op_id = 0, op_type = "start", node1_id = self.model_ops1[0].id, node2_id = self.model_ops2[0].id, i = 0, j = 0)]]
 
-        self.matrix = matrix
         for i in range(size[0]):
             for j in range(size[1]):
-                if not np.isinf(matrix[i][j].top):
-                    if model_ops1[i].operation.name in ["wrap_end", "wrap_separator"]: # If we are trying to close a new branch,
-                        ii = i-1
-                        jj = j
-                        level = 0 # we keep track of how many branches/routings we go into or exit through the current path with this "level" tracker
-                        while model_ops1[i].id != model_ops1[ii].id:
-                            if self.matrix[ii][jj].operation == ["add"]:
-                                ii -= 1
-                            elif self.matrix[ii][jj].operation == ["rem"]:
-                                level = level - max(0, (len(model_ops2[jj].children)-2)) + ("wrap_" in model_ops2[jj].operation.name)
-                                jj -=1
-                            elif self.matrix[ii][jj].operation == ["mut"]:
-                                level = level - max(0, (len(model_ops2[jj].children)-2)) + ("wrap_" in model_ops2[jj].operation.name)
-                                ii -= 1
-                                jj -=1
-                            if level == -1: break # If we exit the outer branch/rout, we break this loop
-                        if (level==0) and (matrix[ii][jj].operation == ["add"]): matrix[i][j].top = matrix[i-1][j].value # If the branch was added within this depth, we allow the ending of the branch
-                        else: matrix[i][j].top = np.inf
-                    else: matrix[i][j].top = matrix[i-1][j].value + 1 # If we are not trying to close a branch, we simply sum the cost of adding whatever we're adding
-                    
-                if not np.isinf(matrix[i][j].left):
-                    if model_ops2[j].operation.name in ["wrap_end", "wrap_separator"]: # If we are trying to close a branch we removed,
-                        ii = i
-                        jj = j-1
-                        level = 0 # we keep track of how many branches/routings we go into or exit through the current path with this "level" tracker
-                        while model_ops2[j].id != model_ops2[jj].id:
-                            if self.matrix[ii][jj].operation == ["add"]:
-                                level = level - max(0, (len(model_ops1[ii].children)-2)) + ("wrap_" in model_ops1[ii].operation.name)
-                                ii -= 1
-                            elif self.matrix[ii][jj].operation == ["rem"]:
-                                jj -=1
-                            elif self.matrix[ii][jj].operation == ["mut"]:
-                                level = level - max(0, (len(model_ops1[ii].children)-2)) + ("wrap_" in model_ops1[ii].operation.name)
-                                ii -= 1
-                                jj -=1
-                            if level == -1: break # If we exit the outer branch/rout, we break this loop
-                        if (level==0) and (matrix[ii][jj].operation == ["rem"]): matrix[i][j].left = matrix[i][j-1].value # If the branch was removed within this depth, we allow the ending of the branch
-                        else: matrix[i][j].left = np.inf
-                    else: matrix[i][j].left = matrix[i][j-1].value + 1 # If we are not trying to close a branch, we simply sum the cost of removing whatever we're removing
-                
-                if not np.isinf(matrix[i][j].corner):
-                    if (model_ops1[i].operation.name in ["wrap_end", "wrap_separator"]) and (model_ops2[j].operation.name == model_ops1[i].operation.name): # If we are trying to close a branch we mutated into another,
-                        ii = i-1
-                        jj = j-1
-                        condition1 = model_ops1[i].id != model_ops1[ii].id
-                        condition2 = model_ops2[j].id != model_ops2[jj].id
-                        while condition1 or condition2: # we simply have to look at where we added/removed/mutated both branches
-                            if self.matrix[ii][jj].operation == ["add"]:
-                                ii -= 1
-                            elif self.matrix[ii][jj].operation == ["rem"]:
-                                jj -= 1
-                            elif self.matrix[ii][jj].operation == ["mut"]:
-                                ii -= 1
-                                jj -= 1
-                            condition1 = condition1 and (model_ops1[i].id != model_ops1[ii].id)
-                            condition2 = condition2 and (model_ops2[j].id != model_ops2[jj].id)
-                        if ((model_ops1[i].id == model_ops1[ii].id) and (model_ops2[j].id == model_ops2[jj].id)) and (matrix[ii][jj].operation == ["mut"]): matrix[i][j].corner = matrix[i-1][j-1].value # and if the branches were mutated, we allow the ending of the branch through mutation
-                        else: matrix[i][j].corner = np.inf
-                    else: matrix[i][j].corner = matrix[i-1][j-1].value + self.cost_mut(model_ops1[i], model_ops2[j]) # If we are not trying to close a branch, we simply sum the cost of mutating whatever we're mutating
+                if matrix[i][j].top == []:
+                    for path in matrix[i-1][j].paths:
+                        if model_ops1[i].operation.name in ["wrap_end", "wrap_sep"]: # If we are trying to close a new branch,
+                            op = 0
+                            level = 0 # we keep track of how many branches/routings we go into or exit through the current path with this "level" tracker
+                            closed_branches = 0 # and the branches that we close
+                            while (model_ops1[i].id != path[op].node1_id) or (path[op].op_type not in ["add_wrap", "add_wrap_jump"]):
+                                op -= 1
+                                # We update the depth level and the number of branches we closed
+                                if (model_ops1[i].id == path[op].node1_id) and ("add" in path[op].op_type): closed_branches += 1
+                                if path[op].op_type in ["rem_wrap", "mut_wrap"]: level -= 1
+                                elif path[op].op_type in ["rem_wrap_end", "mut_wrap_end"]: level += 1
+                                if (level == -1) or (path[op].op_type == "start"): break # If we exit the outer branch/rout, we break this loop
+                            # We check that we have closed all the branches we were meant to
+                            branches_to_close = len(model_ops1[i].parent.children) - 2 - (model_ops1[i].operation.name=="wrap_sep")
+                            if ("_jump" in path[op].op_type): branches_to_close = 3 - branches_to_close
+                            if (level==0) and (branches_to_close == closed_branches): matrix[i][j].top += [matrix[i-1][j].value] # If the branch was added within this depth, we allow the ending of the branch
+                            else: matrix[i][j].top += [np.inf]
+                        else: matrix[i][j].top += [matrix[i-1][j].value + 1] # If we are not trying to close a branch, we simply sum the cost of adding whatever we're adding
+
+                if matrix[i][j].left == []:
+                    for path in matrix[i][j-1].paths:
+                        if model_ops2[j].operation.name in ["wrap_end", "wrap_sep"]: # If we are trying to close a branch we removed,
+                            op = 0
+                            level = 0 # we keep track of how many branches/routings we go into or exit through the current path with this "level" tracker
+                            closed_branches = 0 # and the branches that we close
+                            while (model_ops2[j].id != path[op].node2_id) or (path[op].op_type not in ["rem_wrap", "rem_wrap_jump"]):
+                                op -= 1
+                                # We update the depth level and the number of branches we closed
+                                if (model_ops2[j].id == path[op].node2_id) and ("rem" in path[op].op_type): closed_branches += 1
+                                if path[op].op_type in ["add_wrap", "mut_wrap"]: level -= 1
+                                elif path[op].op_type in ["add_wrap_end", "mut_wrap_end"]: level += 1
+                                if (level == -1) or (path[op].op_type == "start"): break # If we exit the outer branch/rout, we break this loop
+                            # We check that we have closed all the branches we were meant to
+                            branches_to_close = len(model_ops2[j].parent.children) - 2 - (model_ops2[j].operation.name=="wrap_sep")
+                            if ("_jump" in path[op].op_type): branches_to_close = 3 - branches_to_close
+                            if (level==0) and (branches_to_close == closed_branches): matrix[i][j].left += [matrix[i][j-1].value] # If the branch was removed within this depth, we allow the ending of the branch
+                            else: matrix[i][j].left += [np.inf]
+                        else: matrix[i][j].left += [matrix[i][j-1].value + 1] # If we are not trying to close a branch, we simply sum the cost of removing whatever we're removing
+
+                if matrix[i][j].corner == []:
+                    mutcost = self.cost_mut(model_ops1[i], model_ops2[j])
+                    for path in matrix[i-1][j-1].paths:
+                        if (model_ops1[i].operation.name in ["wrap_end", "wrap_sep"]) and (model_ops2[j].operation.name == model_ops1[i].operation.name): # If we are trying to close a branch we mutated into another,
+                            op = 0
+                            closed_branches1 = 0 # We keep track of how many branches we close on either model
+                            closed_branches2 = 0
+                            while not ((model_ops1[i].id == path[op].node1_id) and (model_ops2[j].id == path[op].node2_id) and (path[op].op_type in ["mut_wrap", "mut_wrap_jump"])): # we simply have to look at where we added/removed/mutated both branches
+                                op -= 1
+                                if (model_ops1[i].id == path[op].node1_id) and ("mut" in path[op].op_type): closed_branches1 += 1
+                                if (model_ops2[j].id == path[op].node2_id) and ("mut" in path[op].op_type): closed_branches2 += 1
+                                if (path[op].op_type == "start"): break
+                            # We check that we have closed all the branches we were meant to
+                            branches_to_close1 = len(model_ops1[i].parent.children) - 2 - (model_ops1[i].operation.name=="wrap_sep")
+                            if ("_jump" in path[op].op_type) and ("1" in path[op].op_type): branches_to_close1 = 3 - branches_to_close1
+                            branches_to_close2 = len(model_ops2[j].parent.children) - 2 - (model_ops2[j].operation.name=="wrap_sep")
+                            if ("_jump" in path[op].op_type) and ("2" in path[op].op_type): branches_to_close2 = 3 - branches_to_close2
+                            if (branches_to_close1 == closed_branches1) and (branches_to_close2 == closed_branches2): matrix[i][j].corner += [matrix[i-1][j-1].value] # and if the branches were mutated, we allow the ending of the branch through mutation
+                            else: matrix[i][j].corner += [np.inf]
+                        else: matrix[i][j].corner += [matrix[i-1][j-1].value + mutcost] # If we are not trying to close a branch, we simply sum the cost of mutating whatever we're mutating
                     
                 if np.isnan(matrix[i][j].value):
-                    values = (matrix[i][j].top, matrix[i][j].corner, matrix[i][j].left)
-                    min_value = np.nanmin(values) # We check which would be the cheapest path
-                    matrix[i][j].value = min_value
-                    matrix[i][j].operation = [matrix[i][j].operation[idx]+("add", "mut", "rem")[idx] for idx in priorities if values[idx] == min_value] # And we save the selected operation
-                    matrix[i][j].operation = [matrix[i][j].operation[0]] # For now we only take 1 operation, prioritizing mutation
-        
+                    matrix[i][j].value = np.nanmin(matrix[i][j].top + matrix[i][j].corner + matrix[i][j].left) # We check which would be the cheapest path
+                    
+                    for idx, top in enumerate(matrix[i][j].top):
+                        if top == matrix[i][j].value:
+                            path = matrix[i-1][j].paths[idx]
+                            if np.isinf(matrix[i][j].value): op_value = matrix[i][j].value
+                            else: op_value = matrix[i][j].value-matrix[i-1][j].value
+                            if self.model_ops1[i].operation.name == "wrap_end": matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "add_wrap_end", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j)]]
+                            elif self.model_ops1[i].operation.name == "wrap_sep": matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "add_wrap_sep", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j)]]    
+                            elif (len(self.model_ops1[i].children) >= 3): matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "add_wrap", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j, value = op_value)]]
+                            else: matrix[i][j].paths += [path + [MatrixOperation(op_id = len(self.operations), op_type = "add_module", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j, value = op_value)]]
+                
+                    for idx, left in enumerate(matrix[i][j].left):
+                        if left == matrix[i][j].value:
+                            path = matrix[i][j-1].paths[idx]
+                            if np.isinf(matrix[i][j].value): op_value = matrix[i][j].value
+                            else: op_value = matrix[i][j].value-matrix[i][j-1].value
+                            if self.model_ops2[j].operation.name == "wrap_end": matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "rem_wrap_end", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j)]]
+                            elif self.model_ops2[j].operation.name == "wrap_sep": matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "rem_wrap_sep", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j)]]
+                            elif (len(self.model_ops2[j].children) >= 3): matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "rem_wrap", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j, value = op_value)]]
+                            else: matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "rem", node2_id = self.model_ops2[j].id, i = i, j = j, value = op_value)]]
+                    
+                    for idx, corner in enumerate(matrix[i][j].corner):
+                        if corner == matrix[i][j].value:
+                            path = matrix[i-1][j-1].paths[idx]
+                            if np.isinf(matrix[i][j].value): op_value = matrix[i][j].value
+                            else: op_value = matrix[i][j].value-matrix[i-1][j-1].value
+                            if self.model_ops1[i].operation.name == "wrap_end": matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "mut_wrap_end", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j)]]
+                            elif self.model_ops1[i].operation.name == "wrap_sep": matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "mut_wrap_sep", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j)]]
+                            elif (len(self.model_ops2[j].children) >= 3): matrix[i][j].paths += [path + [MatrixOperation(op_id = len(self.operations), op_type = "mut_wrap", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j, value = op_value)]]
+                            else: matrix[i][j].paths += [path + [MatrixOperation(op_id = len(path), op_type = "mut", node1_id = self.model_ops1[i].id, node2_id = self.model_ops2[j].id, i = i, j = j, value = op_value)]]
+
+                if (i>0) and (j>0): matrix[i-1][j-1].paths = []
+                if self.collapse_corners and (((j-i) >= len(self.model_ops2)*0.25) or ((i-j) >= len(self.model_ops1)*0.25)): matrix[i][j].paths = [matrix[i][j].paths[0]]
+
         return matrix
 
     def cost_mut(self, op1, op2, max_cost = np.inf):
@@ -298,8 +331,8 @@ class AlignmentMatrix():
                 if op1.operation == op2.operation: return 0.
                 else: return 0.5
             elif sum([op.operation.name == "branching(2)" for op in (op1,op2)]) == 1: return max_cost # We can't change a branching(2) into a branching(8) for instance
-            else: return (self.cost_mut(op1.children[0], op2.children[0], 1))/2 # If we substitute a computation/branching/rounting/whatever module by another, we compare the subtype of module
-                
+            elif len(op1.children)>2: return ((self.cost_mut(op1.children[0], op2.children[0], 1))+(self.cost_mut(op1.children[-1], op2.children[-1], 1)))/4 # If we substitute a branching/branching(2)/rounting module by another, we compare the subtype of module
+            else: return (self.cost_mut(op1.children[0], op2.children[0], 1))/2 # If we substitute a computation module by another, we compare the subtype of module
         else:
             return max_cost
             
@@ -406,7 +439,7 @@ class AlignmentMatrix():
         return resequentialized_node
 
     def trace_back(self, from_pos = "end", prioritize = []):
-        if from_pos == "end": from_pos = (self.size[0]-1, self.size[1]-1)
+        if from_pos == "end": from_pos = (len(self.model_ops1)-1, len(self.model_ops2)-1)
         if self.verbose: print("\nOperations to change from model 1 to model 2:")
         self.operations = []
         self.distance = self.matrix[-1][-1].value
@@ -429,7 +462,7 @@ class AlignmentMatrix():
                                                                                           node2_id = self.model_ops2[j].id,
                                                                                           i = i,
                                                                                           j = j)]
-                elif self.model_ops1[i].operation.name == "wrap_separator": self.operations += [MatrixOperation(op_id = len(self.operations),
+                elif self.model_ops1[i].operation.name == "wrap_sep": self.operations += [MatrixOperation(op_id = len(self.operations),
                                                                                                   op_type = "add_wrap_sep",
                                                                                                   node1_id = self.model_ops1[i].id,
                                                                                                   node2_id = self.model_ops2[j].id,
@@ -539,7 +572,7 @@ class AlignmentMatrix():
                                                                                           node2_id = self.model_ops2[j].id,
                                                                                           i = i,
                                                                                           j = j)]
-                elif self.model_ops2[j].operation.name == "wrap_separator": self.operations += [MatrixOperation(op_id = len(self.operations),
+                elif self.model_ops2[j].operation.name == "wrap_sep": self.operations += [MatrixOperation(op_id = len(self.operations),
                                                                                                   op_type = "rem_wrap_sep",
                                                                                                   node1_id = self.model_ops1[i].id,
                                                                                                   node2_id = self.model_ops2[j].id,
@@ -604,7 +637,7 @@ class AlignmentMatrix():
                                                                                           node2_id = self.model_ops2[j].id,
                                                                                           i = i,
                                                                                           j = j)]
-                elif self.model_ops1[i].operation.name == "wrap_separator": self.operations += [MatrixOperation(op_id = len(self.operations),
+                elif self.model_ops1[i].operation.name == "wrap_sep": self.operations += [MatrixOperation(op_id = len(self.operations),
                                                                                           op_type = "mut_wrap_sep",
                                                                                           node1_id = self.model_ops1[i].id,
                                                                                           node2_id = self.model_ops2[j].id,
