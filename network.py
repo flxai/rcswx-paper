@@ -1,9 +1,18 @@
 import math
-from copy import deepcopy
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops.layers.torch import Reduce
+
+
+# Simple Lambda wrapper for arbitrary functions
+class Lambda(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+    def forward(self, x):
+        return self.fn(x)
 
 
 def millify(n, bytes=False, return_float=False):
@@ -116,3 +125,117 @@ class Network(nn.Module):
 
     def num_parameters(self):
         return f"Num params: {millify(self.numel())}"
+
+
+class UNetFromStackedCells(nn.Module):
+    def __init__(self, input_shape, stacked_cells: nn.ModuleList, num_classes=1):
+        """
+        Args:
+            stacked_cells: nn.ModuleList of k identical stacked cells
+                           (each is itself an nn.Module).
+            input_shape: tuple including batch dimension
+            num_classes: number of output channels for final segmentation
+        """
+        super().__init__()
+        self.k = len(stacked_cells)
+
+        # Make encoder
+        self.encoder = nn.ModuleList(stacked_cells)
+
+        # Infer shapes at each encoder output
+        self.out_channels = self._infer_out_shapes(input_shape, stacked_cells)
+
+        # Make decoder (upsample layers)
+        self.decoder = nn.ModuleList()
+        self.post_concat_convs = nn.ModuleList()
+        for enc_shape, dec_input_shape, dec_output_shape in zip(
+            self.encoder, reversed(self.out_channels), reversed(self.out_channels[:-1])
+        ):
+            # Upsample module
+            self.decoder.append(self._make_upsample_layer(dec_input_shape, dec_output_shape))
+
+            # Post-concat conv to reduce channels back to decoder output channels
+            C_in = dec_output_shape[0] + dec_output_shape[0]  # concat channels
+            C_out = dec_output_shape[0]
+            self.post_concat_convs.append(nn.Conv2d(C_in, C_out, kernel_size=3, padding=1))
+
+        # Final 1x1 conv to get desired number of classes
+        self.final = nn.Conv2d(self.out_channels[0][0], num_classes, kernel_size=1)
+
+    def _infer_out_shapes(self, input_shape, stacked_cells):
+        x = torch.randn(*input_shape)
+        out_shapes = []
+        for cell in stacked_cells:
+            x = cell(x)
+            out_shapes.append(x.shape[1:])  # ignore batch dimension
+        return out_shapes
+
+    def _make_upsample_layer(self, input_shape, output_shape):
+        """
+        Returns a module that reshapes and/or upsamples a tensor from input_shape to output_shape.
+        Handles mismatched ranks by reshaping and adjusting channels.
+        
+        Args:
+            input_shape: tuple, e.g., (C_in, H_in, W_in) or (C_in, D_in)
+            output_shape: tuple, e.g., (C_out, H_out, W_out) or (C_out, D_out)
+        
+        Returns:
+            nn.Module mapping tensor of shape (B, *input_shape) to (B, *output_shape)
+        """
+        
+        C_in, *in_spatial = input_shape
+        C_out, *out_spatial = output_shape
+        
+        layers = []
+
+        # 1. Adjust channels if needed
+        if C_in != C_out:
+            if len(in_spatial) == 1:
+                layers.append(nn.Conv1d(C_in, C_out, kernel_size=1))
+            elif len(in_spatial) == 2:
+                layers.append(nn.Conv2d(C_in, C_out, kernel_size=1))
+            else:
+                raise NotImplementedError("Unsupported spatial dimensions: {}".format(len(in_spatial)))
+
+        # 2. Handle rank mismatch by reshaping
+        if len(in_spatial) != len(out_spatial):
+            def reshape_fn(x):
+                B = x.shape[0]
+                # flatten or unsqueeze spatial dims to match rank
+                return x.view(B, C_out, *([1]*len(out_spatial)))
+            layers.append(Lambda(reshape_fn))
+            in_spatial = [1]*len(out_spatial)
+
+        # 3. Upsample spatial dimensions if needed
+        if in_spatial != out_spatial:
+            mode = 'trilinear' if len(out_spatial) == 3 else 'bilinear'
+            layers.append(nn.Upsample(size=out_spatial, mode=mode, align_corners=False))
+
+        if len(layers) == 1:
+            return layers[0]
+        else:
+            return nn.Sequential(*layers)
+
+    def forward(self, x):
+        skips = []
+        # Encoder
+        for i, enc in enumerate(self.encoder):
+            # print(f"Layer {i}: Input shape : {x.shape}")
+            x = enc(x)
+            skips.append(x)
+            # print(f"Layer {i}: Output shape: {x.shape}")
+
+        # Decoder
+        for i, (up, skip) in enumerate(zip(self.decoder, reversed(skips[:-1]))):
+            # print(f"Layer {len(self.encoder) + i}: Input shape : {x.shape}")
+            x = up(x)
+            # Ensure spatial dimensions match (just in case)
+            if x.shape[-2:] != skip.shape[-2:]:
+                x = F.interpolate(x, size=skip.shape[-2:], mode='bilinear', align_corners=False)
+            x = torch.cat([x, skip], dim=1)
+            x = self.post_concat_convs[i](x)
+            # print(f"Layer {len(self.encoder) + i}: Output shape : {x.shape}")
+
+        # Final layer
+        x = self.final(x)
+        return x
