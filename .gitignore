@@ -1,7 +1,7 @@
 # figures, results and logs
 figures/
-results/
-logs/
+results*/
+logs*/
 configs/
 scripts/
 notebooks/
