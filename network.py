@@ -239,3 +239,10 @@ class UNetFromStackedCells(nn.Module):
         # Final layer
         x = self.final(x)
         return x
+
+    def numel(self):
+        num_params = sum([p.numel() for p in self.parameters()])
+        return num_params
+
+    def num_parameters(self):
+        return f"Num params: {millify(self.numel())}"
