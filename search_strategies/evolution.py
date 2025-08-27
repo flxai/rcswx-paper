@@ -10,13 +10,13 @@ import random
 
 from tqdm import tqdm
 
-from search_state import DerivationTreeNode
-from search_strategies.random_search import Sampler
-from baselines import build_baseline, baseline_dict
-from visualise import visualise_derivation_tree, visualise_architecture
-from search_strategies.utils import constrained_smith_waterman_crossover
-from search_strategies.utils import recursive_constrained_smith_waterman_crossover
-from plot import Plotter
+from ..search_state import DerivationTreeNode
+from .random_search import Sampler
+from ..baselines import build_baseline, baseline_dict
+from ..visualise import visualise_derivation_tree, visualise_architecture
+from .utils import constrained_smith_waterman_crossover
+from .utils import recursive_constrained_smith_waterman_crossover
+from ..plot import Plotter
 
 import torch
 
@@ -715,7 +715,8 @@ class Evolution:
                 del old_individual
 
 
-        self.plot(root, reward, iteration)
+        try: self.plot(root, reward, iteration) # TODO: check problems with the visualization
+        except: pass
 
         # save the results
         self.save_results(iteration)
@@ -781,6 +782,8 @@ class Evolution:
                     if self.generational:
                         save_data["old_population"] = self.old_population.tolist()
                     pickle.dump(save_data, f)
+                try:remove(final_path)
+                except:pass
                 rename(temp_path, final_path)
             except KeyboardInterrupt:
                 print("Saving interrupted. Partial results saved.")

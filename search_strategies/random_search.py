@@ -5,10 +5,10 @@ import random
 
 from tqdm import tqdm
 
-from visualise import visualise_derivation_tree
-from search_state import DerivationTreeNode, Stack
-from pcfg import OutOfOptionsError
-from plot import Plotter
+from ..visualise import visualise_derivation_tree
+from ..search_state import DerivationTreeNode, Stack
+from ..pcfg import OutOfOptionsError
+from ..plot import Plotter
 
 
 class Sampler:

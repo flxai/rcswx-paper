@@ -3,7 +3,7 @@ from os.path import join
 from .random_search import RandomSearch
 from .evolution import Evolution
 from .mcts import MCTS
-import utils
+from .. import utils
 
 __all__ = [
     "RandomSearch",
@@ -20,27 +20,29 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
         "mcts": MCTS,
     }[args.search_strategy]
 
+    run_path = utils.create_short_exp_path(args)
+    
     # specific parameters for each search strategy
     search_specific_params = {
         "random_search": {
             "figures_path": join(
                 args.figures_path,
-                utils.get_exp_path(args),
+                run_path,
             ),
             "results_path": join(
                 args.results_path,
-                utils.get_exp_path(args),
+                run_path,
             ),
             "load_from": args.load_from,
         },
         "mcts": {
             "figures_path": join(
                 args.figures_path,
-                utils.get_exp_path(args),
+                run_path,
             ),
             "results_path": join(
                 args.results_path,
-                utils.get_exp_path(args),
+                run_path,
             ),
             "load_from": args.load_from,
             "acquisition_fn": args.acquisition_fn,
@@ -52,11 +54,11 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
         "evolution": {
             "figures_path": join(
                 args.figures_path,
-                utils.get_exp_path(args),
+                run_path,
             ),
             "results_path": join(
                 args.results_path,
-                utils.get_exp_path(args),
+                run_path,
             ),
             "load_from": args.load_from,
             "generational": args.generational,
@@ -73,7 +75,7 @@ def create_search_strategy(args, grammar, evaluation_fn, limiter, input_params):
             "n_tries": args.n_tries,
         }
     }
-
+    
     # create the search
     search = search_strategy(
         # common parameters

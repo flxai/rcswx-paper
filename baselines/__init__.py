@@ -3,10 +3,10 @@ from .wideresnet import wideresnet16_4
 from .vit import vit_d2, vit_d4, vit_d8
 from .mlpmixer import mlpmixer_d2, mlpmixer_d4, mlpmixer_d8
 
-from search_strategies.random_search import Sampler
-from grammars.einspace import *
-from pcfg import PCFG
-from utils import Limiter
+from ..search_strategies.random_search import Sampler
+from ..grammars.einspace import *
+from ..pcfg import PCFG
+from ..utils import Limiter
 
 import re
 

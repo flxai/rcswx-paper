@@ -13,13 +13,13 @@ import pickle
 import gc
 import sys
 
-from search_strategies.random_search import Sampler
-from pcfg import OutOfOptionsError
-from search_state import Stack, DerivationTreeNode
-from visualise import visualise_derivation_tree
-from visualise import visualise_search_tree_2 as visualise_search_tree
-from plot import Plotter
-from utils import CPU_Unpickler
+from .random_search import Sampler
+from ..pcfg import OutOfOptionsError
+from ..search_state import Stack, DerivationTreeNode
+from ..visualise import visualise_derivation_tree
+from ..visualise import visualise_search_tree_2 as visualise_search_tree
+from ..plot import Plotter
+from ..utils import CPU_Unpickler
 
 from rich import print
 import math, random
@@ -125,7 +125,8 @@ class MCTS:
         self.sampler = Sampler(
             pcfg=self.pcfg,
             mode=self.mode,
-            verbose=self.verbose
+            verbose=self.verbose,
+            limiter = self.limiter
         )
 
         if self.acquisition_fn == "uct":
@@ -204,7 +205,8 @@ class MCTS:
             # save to results
             self.save_results(iteration)
 
-            self.plot(end_node, path, reward, iteration)
+            try: self.plot(end_node, path, reward, iteration) # TODO: check problems with the visualization
+            except: pass
 
             # Force garbage collection
             print(f"Performing Garbage Collection")
@@ -621,6 +623,9 @@ class MCTS:
                         "search_tree_root": self.search_tree_root,
                         "rng_state": random.getstate(),
                     }, f)
+                    
+                try:remove(final_path)
+                except:pass
                 rename(temp_path, final_path)
             except KeyboardInterrupt:
                 print("Saving interrupted. Partial results saved.")

@@ -15,7 +15,8 @@ from pympler import asizeof, summary
 import io
 import torch
 from pickle import Unpickler
-
+import json
+import os
 
 class CPU_Unpickler(Unpickler):
     def find_class(self, module, name):
@@ -141,6 +142,7 @@ def load_config(args):
 
 
 def get_exp_path(args):
+    # This version generates a very convoluted path that sometimes is even too long to be created
     exp_path = join(
         args.search_space,
         args.dataset,
@@ -177,6 +179,24 @@ def get_exp_path(args):
         exp_path = join(exp_path, f"selection_strategy={args.selection_strategy}")
         exp_path = join(exp_path, f"tournament_size={args.tournament_size}")
         exp_path = join(exp_path, f"elitism={args.elitism}")
+    return exp_path
+
+def create_short_exp_path(args):
+    exp_path = join(args.search_space,args.dataset,args.search_strategy,f"seed={args.seed}")
+    os.makedirs(join("results",exp_path), exist_ok = True)
+    num_runs = len(os.listdir(join("results",exp_path)))
+    if num_runs > 0: num_runs -= args.continue_search
+    exp_path = join(exp_path,"run_"+str(num_runs))
+    os.makedirs(join("results",exp_path), exist_ok = True)
+    
+    args_dict = args.__dict__.copy()
+    #del args_dict['train_loader'], args_dict['val_loader']
+    args_dict["train_loader"] = str(args_dict["train_loader"])
+    args_dict["val_loader"] = str(args_dict["val_loader"])
+    args_dict["score"] = str(args_dict["score"])
+    args_dict["score_selection"] = str(args_dict["score_selection"])
+    args_dict["device"] = str(args_dict["device"])
+    with open(join("results",exp_path,'args.json'), 'w') as fp: json.dump(args_dict, fp)
     return exp_path
 
 
@@ -291,8 +311,32 @@ class Limiter:
         # node to torch model
         model = self.compile_fn(node)
 
-        libc = ctypes.CDLL("libc.so.6")
-        libc.malloc_trim(0)
+        """Platform-specific memory freeing function"""
+        if sys.platform == 'linux':
+            # Linux implementation
+            libc = ctypes.CDLL("libc.so.6")
+            libc.malloc_trim(0)
+        elif sys.platform == 'win32':
+            # Windows implementation
+            # Try different possible CRT DLL names
+            crt_dll_names = [
+                'msvcrt.dll', 
+                'ucrtbase.dll',
+                'vcruntime140.dll',  # Visual Studio 2015-2019
+                'vcruntime140d.dll', # Debug version
+            ]
+            
+            for dll_name in crt_dll_names:
+                try:
+                    crt = ctypes.CDLL(dll_name)
+                    # Try to find a similar function (though unlikely to exist)
+                    if hasattr(crt, '_heapmin'):
+                        crt._heapmin()
+                        break
+                except Exception:
+                    continue
+        else:
+            print(f"Unsupported platform: {sys.platform}")
 
         # return false is the model is too large
         if check_memory:

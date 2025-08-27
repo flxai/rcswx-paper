@@ -1,7 +1,7 @@
 import torch
 
-from network import Network
-from trainers import Trainer
+from .network import Network
+from .trainers import Trainer
 
 
 def random_evaluation_fn(node, args, train_loader, val_loader):

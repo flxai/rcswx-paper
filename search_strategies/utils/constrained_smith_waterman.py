@@ -7,8 +7,8 @@ import copy
 
 from scipy.stats import skewnorm
 
-from search_state import Operation, DerivationTreeNode
-from grammars import einspace
+from ...search_state import Operation, DerivationTreeNode
+from ...grammars import einspace
 
 
 class MatrixCell():

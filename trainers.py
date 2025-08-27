@@ -8,13 +8,13 @@ import torch.nn as nn
 from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
 from torch import optim
 
-from utils import logits_to_preds, kendall_rank_correlation
-from data_utils.darcyflow import LpLoss
-from data_utils.psicov import calculate_mae, evaluate_test_protein
-from data_utils.fsd50k import calculate_map
-from data_utils.ecg import f1_score_ecg
-from data_utils.deepsea import calculate_auroc
-from data_utils.cosmic import CosmicBCEWithLogitsLoss, CosmicMetricFunction
+from .utils import logits_to_preds, kendall_rank_correlation
+from .data_utils.darcyflow import LpLoss
+from .data_utils.psicov import calculate_mae, evaluate_test_protein
+from .data_utils.fsd50k import calculate_map
+from .data_utils.ecg import f1_score_ecg
+from .data_utils.deepsea import calculate_auroc
+from .data_utils.cosmic import CosmicBCEWithLogitsLoss, CosmicMetricFunction
 
 
 class Trainer:
@@ -55,35 +55,40 @@ class Trainer:
         # define  training parameters
         self.epochs = config["epochs"]
         self.score = config["score"]
-        self.criterion = {
-            "xe": nn.CrossEntropyLoss(),
-            "multi_hot": nn.BCEWithLogitsLoss(),
-            "r2": nn.MSELoss(),
-            "mse": nn.MSELoss(),
-            "relative_l2": lambda x, y: LpLoss(size_average=False)(x, y),
-            "mae8": nn.MSELoss(reduction='mean'),
-            "map": nn.BCEWithLogitsLoss(),
-            "cosmic": CosmicBCEWithLogitsLoss(),
-            "ecg": nn.CrossEntropyLoss(),
-            "deepsea": nn.BCEWithLogitsLoss(),
-        }[self.score]
-        self.score_fn = {
-            "xe": lambda x, y: accuracy_score(x, y),
-            "multi_hot": kendall_rank_correlation,
-            "r2": r2_score,
-            "mse": lambda x, y: -mean_squared_error(x, y),
-            "relative_l2": lambda x, y: -LpLoss(size_average=False)(x, y),
-            "mae8": lambda x, y: -nn.MSELoss(reduction='mean')(
-                torch.tensor(x),
-                torch.tensor(y)
-            ).item(),
-            "map": lambda x, y: calculate_map(
-                torch.tensor(x), y # x is labels, y is predictions
-            ),
-            "cosmic": lambda x, y: CosmicMetricFunction(use_ignore=False)(x, y),
-            "ecg": f1_score_ecg,
-            "deepsea": calculate_auroc,
-        }[self.score]
+        self.score_selection = config["score_selection"]
+        if type(self.score) == str:
+            self.criterion = {
+                "xe": nn.CrossEntropyLoss(),
+                "multi_hot": nn.BCEWithLogitsLoss(),
+                "r2": nn.MSELoss(),
+                "mse": nn.MSELoss(),
+                "relative_l2": lambda x, y: LpLoss(size_average=False)(x, y),
+                "mae8": nn.MSELoss(reduction='mean'),
+                "map": nn.BCEWithLogitsLoss(),
+                "cosmic": CosmicBCEWithLogitsLoss(),
+                "ecg": nn.CrossEntropyLoss(),
+                "deepsea": nn.BCEWithLogitsLoss(),
+            }[self.score]
+        else: self.criterion = self.score
+        if type(self.score_selection) == str:
+            self.score_fn = {
+                "xe": lambda x, y: accuracy_score(x, y),
+                "multi_hot": kendall_rank_correlation,
+                "r2": r2_score,
+                "mse": lambda x, y: -mean_squared_error(x, y),
+                "relative_l2": lambda x, y: -LpLoss(size_average=False)(x, y),
+                "mae8": lambda x, y: -nn.MSELoss(reduction='mean')(
+                    torch.tensor(x),
+                    torch.tensor(y)
+                ).item(),
+                "map": lambda x, y: calculate_map(
+                    torch.tensor(x), y # x is labels, y is predictions
+                ),
+                "cosmic": lambda x, y: CosmicMetricFunction(use_ignore=False)(x, y),
+                "ecg": f1_score_ecg,
+                "deepsea": calculate_auroc,
+            }[self.score_selection]
+        else: self.score_fn = self.score_selection
         self.patience = config["patience"]
         self.hpo_runs = config["hpo_runs"]
 

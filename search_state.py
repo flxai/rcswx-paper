@@ -5,7 +5,7 @@ import pickle
 
 import psutil
 
-from pcfg import OutOfOptionsError
+from .pcfg import OutOfOptionsError
 from rich import print
 from tqdm import tqdm
 

@@ -7,8 +7,8 @@ import seaborn as sns
 
 from networkx.drawing.nx_agraph import graphviz_layout
 
-from search_state import DerivationTreeNode
-from grammars.einspace import clone, add
+from .search_state import DerivationTreeNode
+from .grammars.einspace import clone, add
 
 
 colours = {

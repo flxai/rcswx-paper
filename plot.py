@@ -11,9 +11,9 @@ from tqdm import tqdm
 import sys
 sys.path.append('..')
 
-from arguments import parse_arguments
-from visualise import visualise_derivation_tree
-from utils import load_config, set_dataset_specific_args, get_exp_path
+from .arguments import parse_arguments
+from .visualise import visualise_derivation_tree
+from .utils import load_config, set_dataset_specific_args, get_exp_path
 
 
 def compile_fn(node, args):
