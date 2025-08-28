@@ -151,10 +151,15 @@ class Evolver(Sampler):
         self.tournament_size = tournament_size
         self.elitism = elitism
 
+        self.parent1 = None
+        self.parent2 = None
+
     def evolve(self, population):
         # select the parents (and avoid incest)
         parent1 = self.select(population)
         parent2 = self.select(population.without(parent1))
+        self.parent1 = parent1
+        self.parent2 = parent2
         # print(f"Parent 1: {parent1.id}, {parent1.accuracy}, {parent1.root}")
         crossover_info = {
             "crossover_strategy": self.crossover_strategy,
@@ -696,6 +701,25 @@ class Evolution:
                 success = True
             except (RuntimeError, MemoryError) as e:
                 print(f"Error in generating new individual: {e}")
+                out_of_tries = self.n_tries is not None and n_tries > self.n_tries
+                if out_of_tries:
+                    print(f"Out of tries ({self.n_tries}), stopping evolution.")
+                    raise e
+            except IndexError as e:
+                print(f"Error in generating new individual: {e}")
+                # save the parents for debugging
+                if self.evolver.parent1 and self.evolver.parent2:
+                    parent1 = self.evolver.parent1
+                    parent2 = self.evolver.parent2
+                    # make debug directory
+                    debug_path = self.results_path.rsplit('/', 1)[0] + '/debug'
+                    makedirs(debug_path, exist_ok=True)
+                    # save the parents
+                    with open(join(debug_path, f"parent1_iter{iteration}_id{parent1.id}.pkl"), "wb") as f:
+                        pickle.dump(parent1.root, f)
+                    with open(join(debug_path, f"parent2_iter{iteration}_id{parent2.id}.pkl"), "wb") as f:
+                        pickle.dump(parent2.root, f)
+                    print(f"Saved parents to {debug_path}/parent1_iter{iteration}_id{parent1.id}.pkl and {debug_path}/parent2_iter{iteration}_id{parent2.id}.pkl")
                 out_of_tries = self.n_tries is not None and n_tries > self.n_tries
                 if out_of_tries:
                     print(f"Out of tries ({self.n_tries}), stopping evolution.")
