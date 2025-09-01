@@ -739,7 +739,8 @@ class Evolution:
                 del old_individual
 
 
-        self.plot(root, reward, iteration)
+        # TODO FIXME Remove comment
+        # self.plot(root, reward, iteration)
 
         # save the results
         self.save_results(iteration)
