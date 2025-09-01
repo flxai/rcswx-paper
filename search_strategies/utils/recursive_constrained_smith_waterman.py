@@ -291,7 +291,8 @@ class AlignmentMatrixRecursive():
                     # and we collapse the jswap onto the original matrix on the bottom side
                     for i in range(prev_i, max_i):
                         if matrix[i][max_j-1].value < matrix_jswap[i][max_j-1].value:
-                            matrix[i][max_j-1] = matrix[i][max_j-1]
+                            matrix_jswap[i][max_j-1] = matrix[i][max_j-1]
+                            for path in matrix[i][max_j-1].paths: path[-1].j_swapped = False
                         elif matrix[i][max_j-1].value > matrix_jswap[i][max_j-1].value:
                             matrix[i][max_j-1] = matrix_jswap[i][max_j-1]
                                 
@@ -1023,7 +1024,7 @@ class AlignmentMatrixRecursive():
                         else:
                             op_distances0 = []
                             for aux_idx, aux_op in enumerate(self.operations_unordered):
-                                if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (("_sep" not in self.model_ops2[aux_op.j].operation.name) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2)): op_distances0 += [aux_idx-closing_op]
+                                if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (((("_sep" not in self.model_ops2[aux_op.j].operation.name) and (not aux_op.j_swapped)) or (("_sep" in self.model_ops2[aux_op.j].operation.name) and aux_op.j_swapped)) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2)): op_distances0 += [aux_idx-closing_op]
                                 else: op_distances0 += [np.inf]
                             op_distances0 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances0)]
                             selected_idx0 = np.argmin([abs(op_dist0) for op_dist0 in op_distances0])
@@ -1036,7 +1037,7 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances1 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (("_sep" not in self.model_ops1[aux_op.i].operation.name) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)):
+                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (((("_sep" not in self.model_ops1[aux_op.i].operation.name) and (not aux_op.i_swapped)) or (("_sep" in self.model_ops1[aux_op.i].operation.name) and aux_op.i_swapped)) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)):
                                 op_distances1 += [aux_idx-closing_op]
                             else: op_distances1 += [np.inf]
                         op_distances1 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances1)]
@@ -1052,13 +1053,15 @@ class AlignmentMatrixRecursive():
                     after_layer = after_layer[chosen_pos]
                     final_layer = [self.model_ops2[self.operations_unordered[selected_idx0].j], self.model_ops1[self.operations_unordered[selected_idx1].i]][chosen_pos]
                     final_layer_id = final_layer.id
-                    split_pos = offspring_serialised.index(final_layer)
-
+                    try: split_pos = offspring_serialised.index(final_layer)
+                    except: split_pos = len(offspring_serialised)
+                    
                     if (split_pos == len(offspring_serialised)): end_at_id = -1
                     else: # If we are wrapping until the end of the model nor a wrap_end, we save the id of the last node to split the sequentials at further on
                         if after_layer and (split_pos < len(offspring_serialised)):
+                            jump_ids = [aux_node.id for aux_node in offspring_serialised[split_pos].serialise()]
                             split_pos += 1
-                            while offspring_serialised[split_pos] not in self.model_ops1+self.model_ops2:
+                            while (offspring_serialised[split_pos] not in self.model_ops1+self.model_ops2) or (offspring_serialised[split_pos].id in jump_ids):
                                 split_pos += 1
                                 if split_pos == len(offspring_serialised): break
                             if split_pos < len(offspring_serialised): end_at_id = offspring_serialised[split_pos].id
@@ -1135,7 +1138,7 @@ class AlignmentMatrixRecursive():
                         else:
                             op_distances0 = []
                             for aux_idx, aux_op in enumerate(self.operations_unordered):
-                                if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (("_sep" not in self.model_ops2[aux_op.j].operation.name) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2)): op_distances0 += [aux_idx-closing_op]
+                                if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (((("_sep" not in self.model_ops2[aux_op.j].operation.name) and (not aux_op.j_swapped)) or (("_sep" in self.model_ops2[aux_op.j].operation.name) and aux_op.j_swapped)) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2)): op_distances0 += [aux_idx-closing_op]
                                 else: op_distances0 += [np.inf]
                             op_distances0 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances0)]
                             selected_idx0 = np.argmin([abs(op_dist0) for op_dist0 in op_distances0])
@@ -1148,7 +1151,7 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances1 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (("_sep" not in self.model_ops1[aux_op.i].operation.name) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)):
+                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (((("_sep" not in self.model_ops1[aux_op.i].operation.name) and (not aux_op.i_swapped)) or (("_sep" in self.model_ops1[aux_op.i].operation.name) and aux_op.i_swapped)) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)):
                                 op_distances1 += [aux_idx-closing_op]
                             else: op_distances1 += [np.inf]
                         op_distances1 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances1)]
@@ -1164,7 +1167,8 @@ class AlignmentMatrixRecursive():
                     after_layer = after_layer[chosen_pos]
                     final_layer = [self.model_ops2[self.operations_unordered[selected_idx0].j], self.model_ops1[self.operations_unordered[selected_idx1].i]][chosen_pos]
                     final_layer_id = final_layer.id
-                    split_pos = offspring_serialised.index(final_layer)
+                    try: split_pos = offspring_serialised.index(final_layer)
+                    except: split_pos = len(offspring_serialised)
 
                     if (split_pos == len(offspring_serialised)): end_at_id = -1
                     else: # If we are wrapping until the end of the model nor a wrap_end, we save the id of the last node to split the sequentials at further on
@@ -1210,7 +1214,7 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances0 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (("_sep" not in self.model_ops2[aux_op.j].operation.name) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2)): op_distances0 += [aux_idx-closing_op]
+                            if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (((("_sep" not in self.model_ops2[aux_op.j].operation.name) and (not aux_op.j_swapped)) or (("_sep" in self.model_ops2[aux_op.j].operation.name) and aux_op.j_swapped)) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2)): op_distances0 += [aux_idx-closing_op]
                             else: op_distances0 += [np.inf]
                         op_distances0 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances0)]
                         selected_idx0 = np.argmin([abs(op_dist0) for op_dist0 in op_distances0])
@@ -1223,7 +1227,7 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances1 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (("_sep" not in self.model_ops1[aux_op.i].operation.name) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)):
+                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (((("_sep" not in self.model_ops1[aux_op.i].operation.name) and (not aux_op.i_swapped)) or (("_sep" in self.model_ops1[aux_op.i].operation.name) and aux_op.i_swapped)) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)):
                                 op_distances1 += [aux_idx-closing_op]
                             else: op_distances1 += [np.inf]
                         op_distances1 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances1)]
@@ -1242,12 +1246,13 @@ class AlignmentMatrixRecursive():
 
                     try: split_pos = [idx for idx, node in enumerate(offspring_serialised) if node.id == final_layer_id][0]
                     except: split_pos = len(offspring_serialised)
-                        
+                    
                     if (split_pos == len(offspring_serialised)): end_at_id = -1
                     else: # If we are wrapping until the end of the model nor a wrap_end, we save the id of the last node to split the sequentials at further on
                         if after_layer and (split_pos < len(offspring_serialised)):
+                            jump_ids = [aux_node.id for aux_node in offspring_serialised[split_pos].serialise()]
                             split_pos += 1
-                            while offspring_serialised[split_pos] not in self.model_ops1+self.model_ops2:
+                            while (offspring_serialised[split_pos] not in self.model_ops1+self.model_ops2) or (offspring_serialised[split_pos].id in jump_ids):
                                 split_pos += 1
                                 if split_pos == len(offspring_serialised): break
                             if split_pos < len(offspring_serialised): end_at_id = offspring_serialised[split_pos].id
@@ -1301,17 +1306,18 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances0 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if ((("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (("_sep" not in self.model_ops2[aux_op.j].operation.name) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2))) and (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)): op_distances0 += [aux_idx-closing_op]
+                            if ((("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (((("_sep" not in self.model_ops2[aux_op.j].operation.name) and (not aux_op.j_swapped)) or (("_sep" in self.model_ops2[aux_op.j].operation.name) and aux_op.j_swapped)) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2))) and (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)): op_distances0 += [aux_idx-closing_op]
                             elif ((self.model_ops2[aux_op.j] in offspring_serialised) and ("_end" in self.model_ops2[aux_op.j].operation.name) and (aux_op.j == op.j)): op_distances0 += [-abs(aux_idx-closing_op)]
                             else: op_distances0 += [np.inf]
+                            
                         op_distances0 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances0)]
                         selected_idx0 = np.argmin([abs(op_dist0) for op_dist0 in op_distances0])
                         after_layer[0] = op_distances0[selected_idx0] < 0
                         op_distances0 = abs(op_distances0[selected_idx0])
-                        if len(self.operations_unordered)-closing_op < op_distances0:
-                            op_distances0 = np.inf
-                            selected_idx0 = -1
-                            after_layer[0] = False
+                        #if len(self.operations_unordered)-closing_op < op_distances0:
+                        #    op_distances0 = np.inf
+                        #    selected_idx0 = -1
+                        #    after_layer[0] = False
                     except:
                         selected_idx0 = -1
                         op_distances0 = np.inf
@@ -1319,7 +1325,7 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances1 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (("_sep" not in self.model_ops1[aux_op.i].operation.name) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)): op_distances1 += [aux_idx-closing_op]
+                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (((("_sep" not in self.model_ops1[aux_op.i].operation.name) and (not aux_op.i_swapped)) or (("_sep" in self.model_ops1[aux_op.i].operation.name) and aux_op.i_swapped)) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)): op_distances1 += [aux_idx-closing_op]
                             else: op_distances1 += [np.inf]
                         op_distances1 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances1)]
                         selected_idx1 = np.argmin([abs(op_dist1) for op_dist1 in op_distances1])
@@ -1329,6 +1335,7 @@ class AlignmentMatrixRecursive():
                         selected_idx1 = -1
                         op_distances1 = np.inf
                         after_layer[1] = False
+
                     if np.isinf(np.min([op_distances0, op_distances1])):# If we need to wrap up until the end of the model
                         node2 = node1
                         node1 = offspring
@@ -1336,13 +1343,17 @@ class AlignmentMatrixRecursive():
                     else:
                         chosen_pos = np.argmin([op_distances0, op_distances1])
                         after_layer = after_layer[chosen_pos]
-                        if chosen_pos == 0: split_pos = offspring_serialised.index(self.model_ops2[self.operations_unordered[selected_idx0].j])
-                        else: split_pos = offspring_serialised.index(self.model_ops1[self.operations_unordered[selected_idx1].i])
+                        final_layer = [self.model_ops2[self.operations_unordered[selected_idx0].j], self.model_ops1[self.operations_unordered[selected_idx1].i]][chosen_pos]
+                        final_layer_id = final_layer.id
+                        
+                        try: split_pos = offspring_serialised.index(final_layer)
+                        except: split_pos = len(offspring_serialised)
+
                         if after_layer:
                             node2 = node1
-                            node1 = offspring.serialise()[split_pos]
+                            node1 = offspring_serialised[split_pos]
                         else:
-                            node2 = offspring.serialise()[split_pos]
+                            node2 = offspring_serialised[split_pos]
                 
                 sequential_node = DerivationTreeNode(0,
                                                      level=node.level,
