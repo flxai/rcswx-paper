@@ -1291,11 +1291,13 @@ class AlignmentMatrixRecursive():
             elif "add" in op.op_type:
                 for node in self.model_ops1:
                     if node.id == self.model_ops1[op.i].id:
-                        node1 = copy.deepcopy(node)
+                        add_node = copy.deepcopy(node)
                         break
-                if (not node1.id == self.model_ops1[op.i].id): raise Exception("Node",self.model_ops1[op.i].id,"not found from model 1 when attempting module addition")
+                if (not add_node.id == self.model_ops1[op.i].id): raise Exception("Node",self.model_ops1[op.i].id,"not found from model 1 when attempting module addition")
                 if self.model_ops2[op.j].id == -1:
-                    node2 = offspring
+                    offspring_node = offspring
+                    node1 = add_node
+                    node2 = offspring_node
                     after_layer = False
                 else:
                     offspring_serialised = offspring.serialise()
@@ -1306,61 +1308,80 @@ class AlignmentMatrixRecursive():
                     try:
                         op_distances0 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if ((("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised) and (((("_sep" not in self.model_ops2[aux_op.j].operation.name) and (not aux_op.j_swapped)) or (("_sep" in self.model_ops2[aux_op.j].operation.name) and aux_op.j_swapped)) and ("_end" not in self.model_ops2[aux_op.j].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops2[aux_op.j].children)<2))) and (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)): op_distances0 += [aux_idx-closing_op]
-                            elif ((self.model_ops2[aux_op.j] in offspring_serialised) and ("_end" in self.model_ops2[aux_op.j].operation.name) and (aux_op.j == op.j)): op_distances0 += [-abs(aux_idx-closing_op)]
+                            if (("rem" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops2[aux_op.j] in offspring_serialised): op_distances0 += [aux_idx-closing_op]
                             else: op_distances0 += [np.inf]
-                            
+                            #if (self.model_ops2[aux_op.j] in offspring_serialised) and ("_end" in self.model_ops2[aux_op.j].operation.name) and ((aux_idx-closing_op)>0): break
                         op_distances0 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances0)]
                         selected_idx0 = np.argmin([abs(op_dist0) for op_dist0 in op_distances0])
-                        after_layer[0] = op_distances0[selected_idx0] < 0
-                        op_distances0 = abs(op_distances0[selected_idx0])
-                        #if len(self.operations_unordered)-closing_op < op_distances0:
-                        #    op_distances0 = np.inf
-                        #    selected_idx0 = -1
-                        #    after_layer[0] = False
+                        op_distances0 = op_distances0[selected_idx0]
+                        after_layer[0] = op_distances0 < 0
                     except:
                         selected_idx0 = -1
                         op_distances0 = np.inf
                         after_layer[0] = False
-                    try:
+                    try: #aaaaaaaaa
                         op_distances1 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
-                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised) and (((("_sep" not in self.model_ops1[aux_op.i].operation.name) and (not aux_op.i_swapped)) or (("_sep" in self.model_ops1[aux_op.i].operation.name) and aux_op.i_swapped)) and ("_end" not in self.model_ops1[aux_op.i].operation.name)) and ((aux_idx-closing_op > 0) or (len(self.model_ops1[aux_op.i].children)<2)): op_distances1 += [aux_idx-closing_op]
+                            if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised): op_distances1 += [aux_idx-closing_op]
                             else: op_distances1 += [np.inf]
+                            #if (self.model_ops1[aux_op.i] in offspring_serialised) and ("_end" in self.model_ops1[aux_op.i].operation.name) and ((aux_idx-closing_op)>0): break
                         op_distances1 = [op_dist if (depths[op_idx]==depths[self.operations_unordered.index(op)]) and (op_dist!=0) else np.inf for op_idx, op_dist in enumerate(op_distances1)]
                         selected_idx1 = np.argmin([abs(op_dist1) for op_dist1 in op_distances1])
-                        after_layer[1] = op_distances1[selected_idx1] < 0
-                        op_distances1 = abs(op_distances1[selected_idx1])
+                        op_distances1 = op_distances1[selected_idx1]
+                        after_layer[1] = op_distances1 < 0
                     except:
                         selected_idx1 = -1
                         op_distances1 = np.inf
                         after_layer[1] = False
 
                     if np.isinf(np.min([op_distances0, op_distances1])):# If we need to wrap up until the end of the model
-                        node2 = node1
-                        node1 = offspring
+                        node2 = add_node
+                        offspring_node = offspring
+                        node1 = offspring_node
                         after_layer = True
                     else:
-                        chosen_pos = np.argmin([op_distances0, op_distances1])
+                        chosen_pos = np.argmin([abs(op_distances0), abs(op_distances1)])
                         after_layer = after_layer[chosen_pos]
-                        final_layer = [self.model_ops2[self.operations_unordered[selected_idx0].j], self.model_ops1[self.operations_unordered[selected_idx1].i]][chosen_pos]
-                        final_layer_id = final_layer.id
-                        
-                        try: split_pos = offspring_serialised.index(final_layer)
-                        except: split_pos = len(offspring_serialised)
-
+                        offspring_swap = [self.operations_unordered[selected_idx0].j_swapped, self.operations_unordered[selected_idx1].i_swapped][chosen_pos]
+                        final_layer = [self.model_ops2[self.operations_unordered[selected_idx0].j], self.model_ops1[self.operations_unordered[selected_idx1].i]][chosen_pos]                        
+                        offspring_node = offspring_serialised[offspring_serialised.index(final_layer)]
                         if after_layer:
-                            node2 = node1
-                            node1 = offspring_serialised[split_pos]
+                            if ("_end" in final_layer.operation.name) or (len(offspring_node.children)<=2):
+                                node1 = offspring_node
+                                node2 = add_node
+                                if self.verbose:print(">>>Adding", colored(str(node2), "green"), "after", colored(str(node1), "red"))
+                            elif (("_sep" in final_layer.operation.name) and (not offspring_swap)) or (("_sep" not in final_layer.operation.name) and offspring_swap):
+                                node1 = add_node
+                                offspring_node = offspring_node.children[2]
+                                node2 = offspring_node
+                                if self.verbose:print(">>>Adding", colored(str(node1), "green"), "before", colored(str(node2), "red"))
+                            else:
+                                node1 = add_node
+                                offspring_node = offspring_node.children[1]
+                                node2 = offspring_node
+                                if self.verbose:print(">>>Adding", colored(str(node1), "green"), "before", colored(str(node2), "red"))
                         else:
-                            node2 = offspring_serialised[split_pos]
+                            if ("_end" in final_layer.operation.name):
+                                offspring_node = offspring_node.children[-2]
+                                node1 = offspring_node
+                                node2 = add_node
+                                if self.verbose:print(">>>Adding", colored(str(node2), "green"), "after", colored(str(node1), "red"))
+                            elif (("_sep" in final_layer.operation.name) and (not offspring_swap)) or (("_sep" not in final_layer.operation.name) and offspring_swap):
+                                offspring_node = offspring_node.children[1]
+                                node1 = offspring_node
+                                node2 = add_node
+                                if self.verbose:print(">>>Adding", colored(str(node2), "green"), "after", colored(str(node1), "red"))
+                            else:
+                                node1 = add_node
+                                node2 = offspring_node
+                                if self.verbose:print(">>>Adding", colored(str(node1), "green"), "before", colored(str(node2), "red"))
                 
                 sequential_node = DerivationTreeNode(0,
-                                                     level=node.level,
+                                                     level=node1.level,
                                                      parent=None,
-                                                     input_params=node.input_params,
-                                                     depth=node2.depth,
-                                                     limiter=node.limiter,
+                                                     input_params=node1.input_params,
+                                                     depth=node1.depth,
+                                                     limiter=node1.limiter,
                                                      operation = Operation(name="sequential",
                                                                            build=einspace.build_sequential_module,
                                                                            infer=einspace.infer_sequential_module,
@@ -1373,24 +1394,13 @@ class AlignmentMatrixRecursive():
 
                 self.update_id(sequential_node)
                 
-                if after_layer:
-                    sequential_node.parent = node1.parent
-                    if not node1.is_root():
-                        node1.parent.children[node1.parent.children.index(node1)] = sequential_node
-                else:
-                    sequential_node.parent = node2.parent
-                    if not node2.is_root():
-                        node2.parent.children[node2.parent.children.index(node2)] = sequential_node
-                    
+                sequential_node.parent = offspring_node.parent
+                if not offspring_node.is_root(): offspring_node.parent.children[offspring_node.parent.children.index(offspring_node)] = sequential_node
                 sequential_node.children=[node1, node2]
                 node1.parent = sequential_node
                 node2.parent = sequential_node
                 
                 offspring = sequential_node.get_root()
-                
-                if self.verbose:
-                    if after_layer: print(">>>Adding", colored(str(node2), "green"), "after", colored(str(node1), "red"))
-                    else: print(">>>Adding", colored(str(node1), "green"), "before", colored(str(node2), "red"))
             
             if self.verbose and ("wrap_end" not in op.op_type) and ("wrap_sep" not in op.op_type): print("",colored(offspring, "light_grey"), "\n")
         return offspring
@@ -1449,28 +1459,19 @@ def select_operations(operations, skewness = 0):
     selected = np.random.choice([c for c in combinations], p = probs)
     return [operations[i] for i, v in enumerate(selected) if v == "1"]
 
-def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
+
+def constrained_smith_waterman_crossover(parent1, parent2):
     # build alignment matrix
     matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False)
     operations = matrix.nontrivial_ops
     if len(operations) == 0:
-        return parent1, [], [], 0, 0, 0
+        return parent1, []
     else:
         # sample random operations along the shortest path
-        selected_ops = select_operations(operations, skewness=skewness)
+        selected_ops = select_operations(operations)
         # perform the operations to generate the offspring
-        child = matrix.generate_offspring(selected_ops)
-        distance_between_parents = matrix.distance # sum([op.value for op in matrix.nontrivial_ops])
-        distance_to_parent2 = sum([op.value for op in selected_ops])
-        distance_to_parent1 = distance_between_parents - distance_to_parent2
-
-        # FIXME Check for dangling pointers
-        child = copy.deepcopy(child)
-        selected_ops = copy.deepcopy(selected_ops)
-        operations = copy.deepcopy(operations)
-        del matrix
-
-        return child, selected_ops, operations, distance_to_parent1, distance_to_parent2, distance_between_parents
+        child = matrix.generate_offspring(selected_ops, skewness = 0)
+        return child, corrected_ops
 
 def compile_fn(node, args):
     backbone = node.build(node, set_memory_checkpoint=True)
