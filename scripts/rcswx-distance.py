@@ -14,7 +14,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from search_strategies.utils.recursive_constrained_smith_waterman import (
-    recursive_constrained_smith_waterman_crossover,
+    rcswx_distance,
 )
 
 def save_json(file_path, obj) -> None:
@@ -57,7 +57,7 @@ def worker(a: str, b: str, results_dir: Path, logs_dir: Path, skip_existing: boo
 
             logp("Computing distance...")
             t0 = thread_time()
-            _, _, _, _, _, dist = recursive_constrained_smith_waterman_crossover(dt_a, dt_b)
+            dist = rcswx_distance(dt_a, dt_b)
             td = thread_time() - t0
             logp(f"Done in {td:.6f} s")
 

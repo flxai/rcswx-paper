@@ -1461,6 +1461,14 @@ def select_operations(operations, skewness = 0):
 
 
 def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
+    if parent1.serialise() == parent2.serialise():
+        same = True
+        for op1, op2 in zip(parent1.serialise(), parent2.serialise()):
+            if op1.operation.name != op2.operation.name:
+                same = False
+                break
+        if same:
+            return parent1, [], [], 0, 0, 0
     # build alignment matrix
     matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False)
     operations = matrix.nontrivial_ops
@@ -1482,6 +1490,20 @@ def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0)
         del matrix
 
         return child, selected_ops, operations, distance_to_parent1, distance_to_parent2, distance_between_parents
+
+def rcswx_distance(parent1, parent2):
+    if parent1.serialise() == parent2.serialise():
+        same = True
+        for op1, op2 in zip(parent1.serialise(), parent2.serialise()):
+            if op1.operation.name != op2.operation.name:
+                same = False
+                break
+        if same:
+            return 0
+    # build alignment matrix
+    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False)
+    # return computed distance
+    return matrix.distance
 
 def compile_fn(node, args):
     backbone = node.build(node, set_memory_checkpoint=True)
