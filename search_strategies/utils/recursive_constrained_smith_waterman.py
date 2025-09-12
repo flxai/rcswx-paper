@@ -231,7 +231,7 @@ class AlignmentMatrixRecursive():
                     for j in range(prev_j, max_j):
                         matrix[i][j] = aux_matrix[i-prev_i][j-prev_j]
                 # Then, we compute the same for the required swaps
-                if compute_submatrix[0]:
+                if compute_submatrix[0]: #bbbbbbbbbbbbbb
                     #aux_matrix_iswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_iswap[prev_i:max_i]]
                     aux_matrix_iswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2)
                     for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(len(aux_matrix_iswap))]): matrix_iswap[i][0] = pos
@@ -253,8 +253,10 @@ class AlignmentMatrixRecursive():
                         for j in range(prev_j, max_j):
                             if matrix_iswap[max_i-1][j].value < matrix_ijswap[max_i-1][j].value:
                                 matrix_ijswap[max_i-1][j] = matrix_iswap[max_i-1][j]
+                                for path in matrix_iswap[max_i-1][j].paths: path[-1].j_swapped = False
                             elif matrix_iswap[max_i-1][j].value > matrix_ijswap[max_i-1][j].value:
                                 matrix_iswap[max_i-1][j] = matrix_ijswap[max_i-1][j]
+                                for path in matrix_iswap[max_i-1][j].paths: path[-1].j_swapped = True
                     # Lastly, we dump the computed iswap submatrix onto the original sized one
                     for i in range(prev_i, max_i):
                         for j in range(prev_j, max_j):
@@ -263,9 +265,10 @@ class AlignmentMatrixRecursive():
                     for j in range(prev_j, max_j):
                         if matrix[max_i-1][j].value < matrix_iswap[max_i-1][j].value:
                             matrix_iswap[max_i-1][j] = matrix[max_i-1][j]
-                            for path in matrix[max_i-1][j].paths: path[-1].i_swapped = False
+                            for path in matrix_iswap[max_i-1][j].paths: path[-1].i_swapped = False
                         elif matrix[max_i-1][j].value > matrix_iswap[max_i-1][j].value:
                             matrix[max_i-1][j] = matrix_iswap[max_i-1][j]
+                            for path in matrix[max_i-1][j].paths: path[-1].i_swapped = True
                         
                 if compute_submatrix[1]:
                     #aux_matrix_jswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_jswap[prev_i:max_i]]
@@ -290,8 +293,10 @@ class AlignmentMatrixRecursive():
                         for i in range(prev_i, max_i):
                             if matrix_jswap[i][max_j-1].value < matrix_ijswap[i][max_j-1].value:
                                 matrix_ijswap[i][max_j-1] = matrix_jswap[i][max_j-1]
+                                for path in matrix_ijswap[i][max_j-1].paths: path[-1].j_swapped = False
                             elif matrix_jswap[i][max_j-1].value > matrix_ijswap[i][max_j-1].value:
                                 matrix_jswap[i][max_j-1] = matrix_ijswap[i][max_j-1]
+                                for path in matrix_jswap[i][max_j-1].paths: path[-1].j_swapped = True
                     # Lastly, we dump the computed jswap submatrix onto the original sized one
                     for i in range(prev_i, max_i):
                         for j in range(prev_j, max_j):
@@ -300,9 +305,10 @@ class AlignmentMatrixRecursive():
                     for i in range(prev_i, max_i):
                         if matrix[i][max_j-1].value < matrix_jswap[i][max_j-1].value:
                             matrix_jswap[i][max_j-1] = matrix[i][max_j-1]
-                            for path in matrix[i][max_j-1].paths: path[-1].j_swapped = False
+                            for path in matrix_jswap[i][max_j-1].paths: path[-1].j_swapped = False
                         elif matrix[i][max_j-1].value > matrix_jswap[i][max_j-1].value:
                             matrix[i][max_j-1] = matrix_jswap[i][max_j-1]
+                            for path in matrix[i][max_j-1].paths: path[-1].j_swapped = True
                                 
                 if compute_submatrix[0] and compute_submatrix[1]:
                     # In the case of swapping branches in both models simultaneously,
