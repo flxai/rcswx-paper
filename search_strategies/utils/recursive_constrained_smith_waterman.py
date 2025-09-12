@@ -212,6 +212,7 @@ class AlignmentMatrixRecursive():
             max_j += 1
             # Then, if we have found a new branching(2), we need to calculate all the posible branch swapps
             if (compute_submatrix[0] or compute_submatrix[1]) and ((prev_i, prev_j) != (0, 0)):
+                print(compute_submatrix)
                 # If we did not have aur auxiliary matrices for keeping track of branch swappings, we initialize them
                 if matrix_iswap == None: matrix_iswap = copy.deepcopy(matrix)
                 if matrix_jswap == None: matrix_jswap = copy.deepcopy(matrix)
@@ -225,22 +226,29 @@ class AlignmentMatrixRecursive():
                 if compute_submatrix[1]: aux_model_ops2_swap = [model_ops2[prev_j]]+model_ops2[mid_j+1:max_j-1]+[model_ops2[mid_j]]+model_ops2[prev_j+1:mid_j]+[model_ops2[max_j-1]]
                 else: aux_model_ops2_swap = aux_model_ops2
                 # and recursively call this function to calculate the distance if we did not perform any swaps
-                aux_matrix = self.calculate_matrix(matrix = [[row[j] for j in range(prev_j,max_j)] for row in matrix[prev_i:max_i]], model_ops1 = aux_model_ops1, model_ops2 = aux_model_ops2, start_i = prev_i, start_j = prev_j)
+                print("AUX")
+                aux_matrix = self.calculate_matrix(matrix = [[row[j] for j in range(prev_j,max_j)] for row in matrix[prev_i:max_i]], model_ops1 = aux_model_ops1, model_ops2 = aux_model_ops2, start_i = prev_i+start_i, start_j = prev_j+start_j)
                 # We dump the results onto the original sized matrix
                 for i in range(prev_i, max_i):
                     for j in range(prev_j, max_j):
                         matrix[i][j] = aux_matrix[i-prev_i][j-prev_j]
                 # Then, we compute the same for the required swaps
                 if compute_submatrix[0]:
-                    aux_matrix_iswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_iswap[prev_i:max_i]]
+                    #aux_matrix_iswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_iswap[prev_i:max_i]]
+                    aux_matrix_iswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2)
+                    for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(len(aux_matrix_iswap))]): matrix_iswap[i][0] = pos
                     if np.isnan(aux_matrix_iswap[0][-1].value): aux_matrix_iswap[0] = matrix[prev_i][prev_j:max_j]
-                    aux_matrix_iswap = self.calculate_matrix(matrix = aux_matrix_iswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2, start_i = prev_i, start_j = prev_j)
+                    print("AUX_i")
+                    aux_matrix_iswap = self.calculate_matrix(matrix = aux_matrix_iswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2, start_i = prev_i+start_i, start_j = prev_j+start_j)
                     for j in range(prev_j, max_j):
                         for path in matrix_iswap[max_i-1][j].paths: path[-1].i_swapped = True
                     if (not np.isnan(matrix_ijswap[prev_i][prev_j].value)) and (not compute_submatrix[1]): # if we have not collapsed the matrix with swaps in both branches, we calculate its paths as well
-                        aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
-                        #for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(1,len(aux_matrix_ijswap))]): aux_matrix_ijswap[i+1][0] = pos
-                        aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i, start_j = prev_j)
+                        #aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
+                        aux_matrix_ijswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2_swap)
+                        aux_matrix_ijswap[0] = matrix_ijswap[prev_i][prev_j:max_j]
+                        for i, pos in enumerate([matrix_ijswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
+                        print("AUX_ij")
+                        aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i+start_i, start_j = prev_j+start_j)
                         # Then, we dump the computed ij submatrix into the original sized one
                         for i in range(prev_i, max_i):
                             for j in range(prev_j, max_j):
@@ -264,16 +272,20 @@ class AlignmentMatrixRecursive():
                             matrix[max_i-1][j] = matrix_iswap[max_i-1][j]
                         
                 if compute_submatrix[1]:
-                    aux_matrix_jswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_jswap[prev_i:max_i]]
+                    #aux_matrix_jswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_jswap[prev_i:max_i]]
+                    aux_matrix_jswap = self.initialize_matrix(aux_model_ops1, aux_model_ops2_swap)
+                    aux_matrix_jswap[0] = matrix_jswap[prev_i][prev_j:max_j]
                     if np.isnan(aux_matrix_jswap[-1][0].value):
                         for i, pos in enumerate([matrix[prev_i+i][prev_j] for i in range(len(aux_matrix_jswap))]): aux_matrix_jswap[i][0] = pos
-                    aux_matrix_jswap = self.calculate_matrix(matrix = aux_matrix_jswap, model_ops1 = aux_model_ops1, model_ops2 = aux_model_ops2_swap, start_i = prev_i, start_j = prev_j)
+                    aux_matrix_jswap = self.calculate_matrix(matrix = aux_matrix_jswap, model_ops1 = aux_model_ops1, model_ops2 = aux_model_ops2_swap, start_i = prev_i+start_i, start_j = prev_j+start_j)
                     for i in range(prev_i, max_i):
                         for path in matrix_jswap[i][max_j-1].paths: path[-1].j_swapped = True
                     if (not np.isnan(matrix_ijswap[prev_i][prev_j].value)) and (not compute_submatrix[0]): # if we have not collapsed the matrix with swaps in both branches, we calculate its paths as well
-                        aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
-                        #aux_matrix_ijswap[0][1:] = matrix_jswap[prev_i][prev_j+1:max_j]
-                        aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i, start_j = prev_j)
+                        #aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
+                        aux_matrix_ijswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2_swap)
+                        aux_matrix_ijswap[0] = matrix_ijswap[prev_i][prev_j:max_j]
+                        for i, pos in enumerate([matrix_ijswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
+                        aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i+start_i, start_j = prev_j+start_j)
                         # Then, we dump the computed ij submatrix into the original sized one
                         for i in range(prev_i, max_i):
                             for j in range(prev_j, max_j):
@@ -298,7 +310,10 @@ class AlignmentMatrixRecursive():
                                 
                 if compute_submatrix[0] and compute_submatrix[1]:
                     # In the case of swapping branches in both models simultaneously,
-                    aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
+                    #aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
+                    aux_matrix_ijswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2_swap)
+                    aux_matrix_ijswap[0] = aux_matrix_ijswap[prev_i][prev_j:max_j]
+                    for i, pos in enumerate([aux_matrix_ijswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
                     # if we have no values from previous ijswap calculations, we take them from the separated i and j swapped matrices;
                     # the first row will come from the matrix_jswap matrix
                     if np.isnan(aux_matrix_ijswap[0][-1].value): aux_matrix_ijswap[0] = matrix_jswap[prev_i][prev_j:max_j]
@@ -306,7 +321,7 @@ class AlignmentMatrixRecursive():
                     if np.isnan(aux_matrix_ijswap[-1][0].value):
                         for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
                     # Then, we compute the distance submatrix
-                    aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i, start_j = prev_j)
+                    aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i+start_i, start_j = prev_j+start_j)
 
                     # We collapse the ijswap matrix on the branches that we have exited
                     for i in range(len(aux_matrix_ijswap)):
@@ -1273,8 +1288,7 @@ class AlignmentMatrixRecursive():
                                 else: found_parent_sequential = True
                             else: found_parent_sequential = True
 
-                    if not node2.is_root():
-                        while (node2 not in node2.parent.children) and (not node2.is_root()): node2 = node2.parent
+                    while (node2 not in node2.parent.children) and (not node2.is_root()): node2 = node2.parent
                     if (node2.operation.name == "sequential") and (split_pos < len(offspring_serialised)):
                         node2 = self.split_sequentials(node2, end_at_id) # We resequentialize the modules to be able to split the branches right where we want to
                     else: node2 = node2
@@ -1320,7 +1334,7 @@ class AlignmentMatrixRecursive():
                         selected_idx0 = -1
                         op_distances0 = np.inf
                         after_layer[0] = False
-                    try: #aaaaaaaaa
+                    try:
                         op_distances1 = []
                         for aux_idx, aux_op in enumerate(self.operations_unordered):
                             if (("add" in aux_op.op_type) or ("mut" in aux_op.op_type)) and (self.model_ops1[aux_op.i] in offspring_serialised): op_distances1 += [aux_idx-closing_op]
