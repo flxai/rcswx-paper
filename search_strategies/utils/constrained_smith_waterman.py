@@ -1178,6 +1178,20 @@ def constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
 
         return child, selected_ops, operations, distance_to_parent1, distance_to_parent2, distance_between_parents
 
+def cswx_distance(parent1, parent2):
+    if parent1.serialise() == parent2.serialise():
+        same = True
+        for op1, op2 in zip(parent1.serialise(), parent2.serialise()):
+            if op1.operation.name != op2.operation.name:
+                same = False
+                break
+        if same:
+            return 0
+    # build alignment matrix
+    matrix = AlignmentMatrix(parent1, parent2, verbose=False)
+    # return computed distance
+    return matrix.distance
+
 
 if __name__ == "__main__":
     import os, sys
