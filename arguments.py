@@ -16,6 +16,7 @@ def parse_arguments():
     parser.add_argument("--max_id_limit", type=int, default=10000, help="The maximum ID limit to use.")
     parser.add_argument("--depth_limit", type=int, default=20, help="The depth limit to use.")
     parser.add_argument("--mem_limit", type=int, default=8192, help="The memory limit in MB to use.")
+    parser.add_argument("--mem_crossover_limit", type=int, default=65536, help="The memory limit in MB to use for crossover.")
     parser.add_argument("--individual_mem_limit", type=int, default=1024, help="The memory limit in MB to use.")
     parser.add_argument("--batch_pass_limit", type=int, default=0.1, help="The batch pass limit in seconds to use.")
     # search strategy specific details

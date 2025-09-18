@@ -277,6 +277,16 @@ class Limiter:
             return False
         return True
 
+    def check_memory_crossover(self):
+        """
+        Check if the limits have been reached.
+        """
+        # get the memory usage
+        memory = psutil.Process().memory_info().rss / (1024 * 1024)  # Convert bytes to MB
+        if memory >= self.limits["memory_crossover"]:
+            return False
+        return True
+
     def check_batch_pass_time(self, node, check_memory=False):
         """
         Check if the limits have been reached.

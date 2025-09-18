@@ -8,6 +8,7 @@ time_limit: 300
 max_id_limit: 10000
 depth_limit: 20
 mem_limit: 8192
+mem_crossover_limit: 65536
 individual_mem_limit: 1024
 batch_pass_limit: 0.1
 # search strategy specific details

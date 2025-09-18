@@ -100,7 +100,7 @@ class DecoyNode(object):
 
 class AlignmentMatrixRecursive():
     # This class computes the distance and operations required to transform one model into another, and provides with some function to select and aply said operations
-    def __init__(self, model1, model2, collapse_corners = False, img_name = None, precomputed_matrix = None, verbose = False):
+    def __init__(self, model1, model2, collapse_corners = False, img_name = None, precomputed_matrix = None, verbose = False, limiter=None):
         self.collapse_corners = collapse_corners # Wether to collapse the paths at the corners of the matrix to avoid making unnecesary computations that probably won't yield better alignments
         self.img_name = img_name # Name to save the visualization of the distance matrix as
         self.verbose = verbose # Wether to print the operations and matrix
@@ -114,6 +114,8 @@ class AlignmentMatrixRecursive():
         for node in self.model2.serialise(): self.update_id(node) # We reset the models' node ids to avoid anything breaking when we combine the models because of id repetitions
         if self.verbose: print("Second model:", self.model2)
         self.model_ops2 = [DecoyNode(None, None, "start_node")] + self.breakdown(self.model2)
+        # Add limiter for memory control
+        self.limiter = limiter
         # Calculate the matrix
         timestart = time.time()
         self.operations = []
@@ -188,6 +190,8 @@ class AlignmentMatrixRecursive():
         prev_i,prev_j = 0, 0
         
         while np.isnan(matrix[-1][-1].value):
+            if not self.limiter.check_memory_crossover():
+                raise MemoryError(f"Memory limit exceeded for crossover of these architectures:\n  {str(self.model1)}\n  {str(self.model2)}")
             # We define the submatrix that we will fill up next by looking at the next instances of branching(2) openings and closings in either model
             compute_submatrix = [False, False]
             if (model_ops1[prev_i].operation.name == "branching(2)") and prev_i>0:
@@ -1487,7 +1491,7 @@ def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0)
         if same:
             return parent1, [], [], 0, 0, 0
     # build alignment matrix
-    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False)
+    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False, limiter=parent1.limiter)
     operations = matrix.nontrivial_ops
     if len(operations) == 0:
         return parent1, [], [], 0, 0, 0

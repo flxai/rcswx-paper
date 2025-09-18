@@ -79,6 +79,7 @@ if __name__ == "__main__":
             "max_id": args.max_id_limit,
             "depth": args.depth_limit,
             "memory": args.mem_limit,
+            "memory_crossover": args.mem_crossover_limit,
             "individual_memory": args.individual_mem_limit,
             "batch_pass_seconds": args.batch_pass_limit,
         },
