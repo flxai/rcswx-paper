@@ -210,7 +210,7 @@ class Evolver(Sampler):
             elif self.crossover_strategy == "constrained_smith_waterman":
                 child, crossover_info = self.constrained_smith_waterman_crossover(parent1, parent2)
             elif self.crossover_strategy == "recursive_constrained_smith_waterman":
-                child, crossover_info = self.recursive_constrained_smith_waterman_crossover(parent1, parent2)
+                child, crossover_info = self.recursive_constrained_smith_waterman_crossover(parent1, parent2, limiter=self.limiter)
             print(f"Memory consumption after crossover: {get_memory()} MiB")
         else:
             child = parent1
@@ -337,7 +337,9 @@ class Evolver(Sampler):
             except Exception as e:
                 print(e)
 
-    def recursive_constrained_smith_waterman_crossover(self, parent1, parent2, skewness=0, max_tries=100):
+    def recursive_constrained_smith_waterman_crossover(self, parent1, parent2, skewness=0, max_tries=100, limiter=None):
+        if limiter is None:
+            limiter = parent1.limiter
         root_input_params = deepcopy(parent1.input_params)
         success = False
         tries = 0
@@ -346,7 +348,7 @@ class Evolver(Sampler):
                 raise RuntimeError("Crossover failed to generate valid children.")
             tries += 1
             child, crossover_operations, crossover_all_operations, distance_to_parent1, distance_to_parent2, distance_between_parents = recursive_constrained_smith_waterman_crossover(
-                parent1, parent2, skewness=skewness
+                parent1, parent2, skewness=skewness, limiter=limiter
             )
             # re-infer all params
             try:

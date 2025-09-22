@@ -1481,7 +1481,9 @@ def select_operations(operations, skewness = 0):
     return [operations[i] for i, v in enumerate(selected) if v == "1"]
 
 
-def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0):
+def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0, limiter=None):
+    if limiter is None:
+        limiter = parent1.limiter
     if parent1.serialise() == parent2.serialise():
         same = True
         for op1, op2 in zip(parent1.serialise(), parent2.serialise()):
@@ -1491,7 +1493,7 @@ def recursive_constrained_smith_waterman_crossover(parent1, parent2, skewness=0)
         if same:
             return parent1, [], [], 0, 0, 0
     # build alignment matrix
-    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False, limiter=parent1.limiter)
+    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False, limiter=limiter)
     operations = matrix.nontrivial_ops
     if len(operations) == 0:
         return parent1, [], [], 0, 0, 0
