@@ -1294,7 +1294,8 @@ class AlignmentMatrixRecursive():
                                 else: found_parent_sequential = True
                             else: found_parent_sequential = True
 
-                    while (node2 not in node2.parent.children) and (not node2.is_root()): node2 = node2.parent
+                    if not node2.is_root():
+                        while (node2 not in node2.parent.children) and (not node2.is_root()): node2 = node2.parent
                     if (node2.operation.name == "sequential") and (split_pos < len(offspring_serialised)):
                         node2 = self.split_sequentials(node2, end_at_id) # We resequentialize the modules to be able to split the branches right where we want to
                     else: node2 = node2
