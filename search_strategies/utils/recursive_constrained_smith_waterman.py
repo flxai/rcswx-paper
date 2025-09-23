@@ -8,6 +8,7 @@ import copy
 from scipy.stats import skewnorm
 
 from search_state import Operation, DerivationTreeNode
+from utils import Limiter
 from grammars import einspace
 
 class MatrixCell():
@@ -1524,16 +1525,20 @@ def rcswx_distance(parent1, parent2):
                 break
         if same:
             return 0
+    limiter = Limiter(
+        limits={
+            "time": 60,
+            "restart_time": 300,
+            "max_id": 10000,
+            "depth": 20,
+            "memory": 8196,
+            "memory_crossover": 65536,
+            "individual_memory": 1024,
+            "batch_pass_seconds": 0.1,
+        }
+    )
+
     # build alignment matrix
-    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False)
+    matrix = AlignmentMatrixRecursive(parent1, parent2, verbose=False, limiter=limiter)
     # return computed distance
     return matrix.distance
-
-def compile_fn(node, args):
-    backbone = node.build(node, set_memory_checkpoint=True)
-    return Network(
-        backbone,
-        node.output_params["shape"],
-        args.num_classes,
-        vars(args)
-    ).to(args.device)
