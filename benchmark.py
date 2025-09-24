@@ -155,6 +155,29 @@ def benchmark(method, min_nodes, max_nodes, runs, shuffle, jobs):
             gc.collect()
     click.echo("Benchmarking completed")
 
+
+@cli.command(help="Create results/benchmark/hist_nodes.json with node-count histogram.")
+@click.option("--pkl", default="data/benchmark/benchmark.pkl", show_default=True,
+              help="Path to benchmark.pkl")
+@click.option("--load-mode", type=click.Choice(["cswx1","cswx2","sepx"]), default="cswx1", show_default=True)
+@click.option("--out", "out_path", default="results/benchmark/hist_nodes.json", show_default=True)
+def hist(pkl, load_mode, out_path):
+    """
+    Extract histogram of node counts from the benchmark DB and write JSON:
+      { "<n_nodes>": <count>, ... }
+    """
+    import os as _os, json as _json
+    _os.makedirs(_os.path.dirname(out_path), exist_ok=True)
+    db = DerivationTreeDatabase(pkl_path=pkl, load_mode=load_mode).load()
+    counts = db.get_sample_counts()
+    payload = {str(int(k)): int(v) for k, v in counts.items()}
+    tmp = out_path + ".tmp"
+    with open(tmp, "w") as f:
+        _json.dump(payload, f)
+    _os.replace(tmp, out_path)
+    click.echo(f"Wrote histogram: {out_path} (unique n={len(payload)})")
+
+
 @cli.command()
 def plot():
     """
@@ -174,16 +197,16 @@ def plot():
     from scipy.interpolate import UnivariateSpline
     import matplotlib as mpl
 
-    mpl.rcParams['text.usetex'] = True
+    # mpl.rcParams['text.usetex'] = True
     mpl.rcParams['font.family'] = 'serif'
     mpl.rcParams['font.serif'] = ['Linux Libertine O', 'Libertine']
-    mpl.rcParams['text.latex.preamble'] = (
-        r'\usepackage[nofontspec,semibold,lining]{libertine}'
-        r'\usepackage[T1]{fontenc}'
-        r'\usepackage[varqu,varl,scaled=0.96]{zi4}'
-        r'\usepackage[libertine,vvarbb,upint]{newtxmath}'
-        r'\usepackage[cal=cm,bb=ams,scr=boondoxo]{mathalpha}'
-    )
+    # mpl.rcParams['text.latex.preamble'] = (
+    #     r'\usepackage[nofontspec,semibold,lining]{libertine}'
+    #     r'\usepackage[T1]{fontenc}'
+    #     r'\usepackage[varqu,varl,scaled=0.96]{zi4}'
+    #     r'\usepackage[libertine,vvarbb,upint]{newtxmath}'
+    #     r'\usepackage[cal=cm,bb=ams,scr=boondoxo]{mathalpha}'
+    # )
     mpl.rcParams['axes.titlesize'] = 16
     mpl.rcParams['axes.labelsize'] = 14
     mpl.rcParams['xtick.labelsize'] = 14
@@ -314,18 +337,21 @@ def plot():
     # --- End CSWX modifications ---
 
     # Bottom histogram & KDE (unchanged)
-    hist_file = 'data/benchmark-hist.pkl'
-    if os.path.exists(hist_file):
-        with open(hist_file, 'rb') as f:
-            counts = pickle.load(f)
-    else:
-        click.echo("Loading DB to create hist file")
+    hist_json = 'results/benchmark/hist_nodes.json'
+    counts = None
+    if os.path.exists(hist_json):
+        with open(hist_json, 'r') as f:
+            raw = json.load(f)
+        counts = {int(k): int(v) for k, v in raw.items()}
+    if not counts:
+        click.echo("Histogram JSON missing; building from DB (cswx1)…")
         from __main__ import DerivationTreeDatabase
-        temp_DB = DerivationTreeDatabase(pkl_path="data/benchmark/benchmark.pkl", load_mode="cswx1")
-        temp_DB.load()
+        temp_DB = DerivationTreeDatabase(pkl_path="data/benchmark/benchmark.pkl", load_mode="cswx1").load()
         counts = temp_DB.get_sample_counts()
-        with open(hist_file, 'wb') as f:
-            pickle.dump(counts, f)
+        os.makedirs(os.path.dirname(hist_json), exist_ok=True)
+        with open(hist_json, 'w') as f:
+            json.dump({str(int(k)): int(v) for k, v in counts.items()}, f)
+        click.echo(f"Wrote {hist_json}")
     x_all = []
     for node_val, freq_val in counts.items():
         x_all.extend([node_val] * freq_val)
