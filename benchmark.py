@@ -380,5 +380,98 @@ def plot():
     plt.savefig("results/benchmark/benchmark-runtimes.svg", format='svg')
     plt.show()
 
+# --- RCSWX collector: import distance-matrix runtimes into results/benchmark format ---
+
+def _rcswx_stable_seed_from_path(path: str) -> int:
+    """Deterministic seed from filename parts like ...seed=SA_id=IA_seed=SB_id=IB.json."""
+    import re as _re, hashlib as _hashlib
+    nums = _re.findall(r'(?:seed|id)=(\d+)', path)
+    key = "-".join(nums[:4]).encode() if len(nums) >= 4 else path.encode()
+    h = _hashlib.blake2b(key, digest_size=8).digest()
+    return int.from_bytes(h, 'little') % 1_000_000_000
+
+def _rcswx_parse_distance_file(fpath: str, dataset: str, min_n: int, max_n: int):
+    if fpath.endswith(".error.json"):
+        return None
+    try:
+        import json as _json
+        with open(fpath, "r") as f:
+            data = _json.load(f)
+        n = int(data.get("size_a")); m = int(data.get("size_b"))
+        if n != m or not (min_n <= n <= max_n):
+            return None
+        if dataset and data.get("dataset") != dataset:
+            return None
+        t = float(data.get("time", 0.0))
+        if not (t > 0):
+            return None
+        return (n, t, _rcswx_stable_seed_from_path(fpath))
+    except Exception:
+        return None
+
+def _rcswx_write(out_dir: str, method: str, n: int, seed: int, t: float, overwrite: bool):
+    import os as _os, json as _json, tempfile as _tempfile
+    _os.makedirs(out_dir, exist_ok=True)
+    out_name = f"{method}_{n}_{seed}.json"
+    out_path = _os.path.join(out_dir, out_name)
+    if _os.path.exists(out_path) and not overwrite:
+        return False
+    payload = {"method": method, "n_nodes": n, "seed": seed, "time": t}
+    fd, tmp = _tempfile.mkstemp(prefix=out_name + ".", dir=out_dir, text=True)
+    with _os.fdopen(fd, "w") as f:
+        _json.dump(payload, f)
+    _os.replace(tmp, out_path)
+    return True
+
+@cli.command(help="Collect RCSWX runtimes from distance matrix into results/benchmark format.")
+@click.argument("method", type=click.Choice(["rcswx"]))
+@click.option("--distance-dir", default="results/distance", show_default=True)
+@click.option("--dataset", default="cifar10", show_default=True)
+@click.option("--min-nodes", default=0, type=int, show_default=True)
+@click.option("--max-nodes", default=200, type=int, show_default=True)
+@click.option("--per-n", default=10, type=int, show_default=True)
+@click.option("-j", "--jobs", type=int, default=os.cpu_count(), show_default=True)
+@click.option("--shuffle/--no-shuffle", default=True, show_default=True)
+@click.option("--dry-run", is_flag=True, default=False, show_default=True)
+@click.option("--overwrite", is_flag=True, default=False, show_default=True)
+def collect(method, distance_dir, dataset, min_nodes, max_nodes, per_n, jobs, shuffle, dry_run, overwrite):
+    import os as _os, random as _random
+    from concurrent.futures import ProcessPoolExecutor as _PPE, as_completed as _as_completed
+    from collections import defaultdict as _dd
+    # gather files
+    file_paths = []
+    for root, _, files in _os.walk(distance_dir):
+        for fn in files:
+            if fn.endswith(".json") and not fn.endswith(".error.json"):
+                file_paths.append(_os.path.join(root, fn))
+    if shuffle:
+        _random.shuffle(file_paths)
+    # parse
+    parsed = []
+    if jobs is None or jobs <= 1:
+        for fp in file_paths:
+            r = _rcswx_parse_distance_file(fp, dataset, min_nodes, max_nodes)
+            if r: parsed.append(r)
+    else:
+        with _PPE(max_workers=jobs) as ex:
+            futs = [ex.submit(_rcswx_parse_distance_file, fp, dataset, min_nodes, max_nodes) for fp in file_paths]
+            for fut in _as_completed(futs):
+                r = fut.result()
+                if r: parsed.append(r)
+    # write with per-n cap
+    per_n_count = _dd(int); skipped_exists = skipped_cap = 0
+    out_dir = "results/benchmark"
+    for n, t, seed in parsed:
+        if per_n_count[n] >= per_n:
+            skipped_cap += 1; continue
+        if not dry_run:
+            ok = _rcswx_write(out_dir, method, n, seed, t, overwrite=overwrite)
+            if not ok: skipped_exists += 1; continue
+        per_n_count[n] += 1
+    click.echo(f"[collect] scanned={len(file_paths)} matched={len(parsed)} "
+               f"selected={sum(per_n_count.values())} "
+               f"written={sum(per_n_count.values())-skipped_exists} "
+               f"skipped_exists={skipped_exists} skipped_cap={skipped_cap} out_dir={out_dir}")
+
 if __name__ == "__main__":
     cli()
