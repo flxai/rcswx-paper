@@ -4,6 +4,7 @@ from termcolor import colored
 import random
 import time
 import copy
+import gc
 
 from scipy.stats import skewnorm
 
@@ -274,6 +275,7 @@ class AlignmentMatrixRecursive():
                         elif matrix[max_i-1][j].value > matrix_iswap[max_i-1][j].value:
                             matrix[max_i-1][j] = matrix_iswap[max_i-1][j]
                             for path in matrix[max_i-1][j].paths: path[-1].i_swapped = True
+                    gc.collect()
                         
                 if compute_submatrix[1]:
                     #aux_matrix_jswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_jswap[prev_i:max_i]]
@@ -314,6 +316,7 @@ class AlignmentMatrixRecursive():
                         elif matrix[i][max_j-1].value > matrix_jswap[i][max_j-1].value:
                             matrix[i][max_j-1] = matrix_jswap[i][max_j-1]
                             for path in matrix[i][max_j-1].paths: path[-1].j_swapped = True
+                    gc.collect()
                                 
                 if compute_submatrix[0] and compute_submatrix[1]:
                     # In the case of swapping branches in both models simultaneously,
@@ -329,7 +332,7 @@ class AlignmentMatrixRecursive():
                         for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
                     # Then, we compute the distance submatrix
                     aux_matrix_ijswap = self.calculate_matrix(matrix = aux_matrix_ijswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2_swap, start_i = prev_i+start_i, start_j = prev_j+start_j)
-
+                    
                     # We collapse the ijswap matrix on the branches that we have exited
                     for i in range(len(aux_matrix_ijswap)):
                         for path in aux_matrix_ijswap[i][-1].paths: path[-1].i_swapped = True
@@ -345,6 +348,7 @@ class AlignmentMatrixRecursive():
                             matrix_ijswap[i][j] = aux_matrix_ijswap[i-prev_i][j-prev_j]
                     # We can collapse the original matrix at the corner because we exited both branches. The rest, we signal that we would need to collapse it
                     if matrix[max_i-1][max_j-1].value > matrix_ijswap[max_i-1][max_j-1].value: matrix[max_i-1][max_j-1] = matrix_ijswap[max_i-1][max_j-1]
+                    gc.collect()
 
             # If we are not dealing with branch swaps, we simply fill the matrix from the corner downwards
             else:
@@ -453,6 +457,13 @@ class AlignmentMatrixRecursive():
                         # We can collapse the paths on the corners, which are really unlikely to contain the best path, to avoid computing unnecesary garbage in really big matrices
                         if self.collapse_corners and (((j+start_j-i-start_i) >= len(self.model_ops2)*0.25) or ((i+start_i-j-start_j) >= len(self.model_ops1)*0.25)): matrix[i][j].paths = [matrix[i][j].paths[0]]
 
+                    # We get rid of the paths that we don't need anymore to compute anything with to liberate some memory
+                    if (i>1 and j>1):
+                        matrix[i-1][j-1].paths = []
+                        if matrix_iswap != None: matrix_iswap[i-1][j-1].paths = []
+                        if matrix_jswap != None: matrix_jswap[i-1][j-1].paths = []
+                        if matrix_ijswap != None: matrix_ijswap[i-1][j-1].paths = []
+                        
             # We get rid of the paths that we don't need anymore to compute anything with to liberate some memory
             if (model_ops1 == self.model_ops1) and (model_ops2 == self.model_ops2): 
                 for i in range(prev_i, max_i-(max_i<len(model_ops1))):
@@ -461,6 +472,8 @@ class AlignmentMatrixRecursive():
                             matrix[i][j].paths = []
                             if matrix_iswap != None: matrix_iswap[i][j].paths = []
                             if matrix_jswap != None: matrix_jswap[i][j].paths = []
+                            if matrix_ijswap != None: matrix_ijswap[i][j].paths = []
+            gc.collect()
 
             # We move on to the next submatrix
             if max_j >= len(model_ops2):
