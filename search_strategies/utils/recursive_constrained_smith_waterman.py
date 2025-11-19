@@ -5,6 +5,7 @@ import random
 import time
 import copy
 import gc
+import psutil
 
 from scipy.stats import skewnorm
 
@@ -275,7 +276,6 @@ class AlignmentMatrixRecursive():
                         elif matrix[max_i-1][j].value > matrix_iswap[max_i-1][j].value:
                             matrix[max_i-1][j] = matrix_iswap[max_i-1][j]
                             for path in matrix[max_i-1][j].paths: path[-1].i_swapped = True
-                    gc.collect()
                         
                 if compute_submatrix[1]:
                     #aux_matrix_jswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_jswap[prev_i:max_i]]
@@ -316,7 +316,6 @@ class AlignmentMatrixRecursive():
                         elif matrix[i][max_j-1].value > matrix_jswap[i][max_j-1].value:
                             matrix[i][max_j-1] = matrix_jswap[i][max_j-1]
                             for path in matrix[i][max_j-1].paths: path[-1].j_swapped = True
-                    gc.collect()
                                 
                 if compute_submatrix[0] and compute_submatrix[1]:
                     # In the case of swapping branches in both models simultaneously,
@@ -348,7 +347,6 @@ class AlignmentMatrixRecursive():
                             matrix_ijswap[i][j] = aux_matrix_ijswap[i-prev_i][j-prev_j]
                     # We can collapse the original matrix at the corner because we exited both branches. The rest, we signal that we would need to collapse it
                     if matrix[max_i-1][max_j-1].value > matrix_ijswap[max_i-1][max_j-1].value: matrix[max_i-1][max_j-1] = matrix_ijswap[max_i-1][max_j-1]
-                    gc.collect()
 
             # If we are not dealing with branch swaps, we simply fill the matrix from the corner downwards
             else:
@@ -473,7 +471,7 @@ class AlignmentMatrixRecursive():
                             if matrix_iswap != None: matrix_iswap[i][j].paths = []
                             if matrix_jswap != None: matrix_jswap[i][j].paths = []
                             if matrix_ijswap != None: matrix_ijswap[i][j].paths = []
-            gc.collect()
+            if psutil.virtual_memory().percent > 75: gc.collect()
 
             # We move on to the next submatrix
             if max_j >= len(model_ops2):
