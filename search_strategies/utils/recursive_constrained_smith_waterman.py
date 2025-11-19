@@ -22,6 +22,18 @@ class MatrixCell():
         self.paths = [] # list of valid, most optimal paths to reach this position in the matrix
         self.value = np.nan # distance to the starting position
 
+    def clean(self, completely=True):
+        if completely:
+            self.top = []
+            self.left = []
+            self.corner = []
+            self.paths = []
+        else:
+            self.top = [self.top[0]]
+            self.left = [self.left[0]]
+            self.corner = [self.corner[0]]
+            self.paths = [self.paths[0]]
+    
     def __str__(self):
         return "Value of "+str(self.value)+" with posible paths:\n"+"".join([str(path)+"\n" for path in self.paths])
 
@@ -453,24 +465,28 @@ class AlignmentMatrixRecursive():
                         if matrix_jswap != None: matrix_jswap[i][j] = matrix[i][j]
                         if matrix_ijswap != None: matrix_ijswap[i][j] = matrix[i][j]
                         # We can collapse the paths on the corners, which are really unlikely to contain the best path, to avoid computing unnecesary garbage in really big matrices
-                        if self.collapse_corners and (((j+start_j-i-start_i) >= len(self.model_ops2)*0.25) or ((i+start_i-j-start_j) >= len(self.model_ops1)*0.25)): matrix[i][j].paths = [matrix[i][j].paths[0]]
+                        if self.collapse_corners and (((j+start_j-i-start_i) >= len(self.model_ops2)*0.25) or ((i+start_i-j-start_j) >= len(self.model_ops1)*0.25)):
+                            matrix[i][j].clean(completely=False)
+                            if matrix_iswap != None: matrix_iswap[i][j].clean(completely=False)
+                            if matrix_jswap != None: matrix_jswap[i][j].clean(completely=False)
+                            if matrix_ijswap != None: matrix_ijswap[i][j].clean(completely=False)
 
                     # We get rid of the paths that we don't need anymore to compute anything with to liberate some memory
                     if (i>1 and j>1):
-                        matrix[i-1][j-1].paths = []
-                        if matrix_iswap != None: matrix_iswap[i-1][j-1].paths = []
-                        if matrix_jswap != None: matrix_jswap[i-1][j-1].paths = []
-                        if matrix_ijswap != None: matrix_ijswap[i-1][j-1].paths = []
+                        matrix[i-1][j-1].clean()
+                        if matrix_iswap != None: matrix_iswap[i-1][j-1].clean()
+                        if matrix_jswap != None: matrix_jswap[i-1][j-1].clean()
+                        if matrix_ijswap != None: matrix_ijswap[i-1][j-1].clean()
                         
             # We get rid of the paths that we don't need anymore to compute anything with to liberate some memory
             if (model_ops1 == self.model_ops1) and (model_ops2 == self.model_ops2): 
                 for i in range(prev_i, max_i-(max_i<len(model_ops1))):
                     for j in range(prev_j, max_j-(max_j<len(model_ops2))):
                         if (i<len(self.model_ops1)-1) and (j<len(self.model_ops2)-1):
-                            matrix[i][j].paths = []
-                            if matrix_iswap != None: matrix_iswap[i][j].paths = []
-                            if matrix_jswap != None: matrix_jswap[i][j].paths = []
-                            if matrix_ijswap != None: matrix_ijswap[i][j].paths = []
+                            matrix[i][j].clean()
+                            if matrix_iswap != None: matrix_iswap[i][j].clean()
+                            if matrix_jswap != None: matrix_jswap[i][j].clean()
+                            if matrix_ijswap != None: matrix_ijswap[i][j].clean()
             if psutil.virtual_memory().percent > 75: gc.collect()
 
             # We move on to the next submatrix
