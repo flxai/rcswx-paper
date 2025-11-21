@@ -203,6 +203,13 @@ class AlignmentMatrixRecursive():
         if model_ops2 == None: model_ops2 = self.model_ops2
         matrix_iswap, matrix_jswap, matrix_ijswap = None, None, None
         prev_i,prev_j = 0, 0
+
+        print(f"Starting crossover matrix computation for the following architectures:")
+        print(f"  parent1: ({len(model_ops1)} nodes)")
+        print(f"  {str(self.model1)}")
+        print()
+        print(f"  parent2: ({len(model_ops2)} nodes)")
+        print(f"  {str(self.model2)}")
         
         while np.isnan(matrix[-1][-1].value):
             if not self.limiter.check_memory_crossover():
@@ -498,6 +505,8 @@ class AlignmentMatrixRecursive():
                 prev_j = 0
                 prev_i = max_i-1
             else: prev_j = max_j-1
+
+        print(f"Crossover matrix computation succeeded")
         return matrix
 
     def cost_mut(self, op1, op2, max_cost = np.inf):
