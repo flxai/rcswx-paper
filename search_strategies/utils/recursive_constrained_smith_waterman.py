@@ -487,7 +487,10 @@ class AlignmentMatrixRecursive():
                             if matrix_iswap != None: matrix_iswap[i][j].clean()
                             if matrix_jswap != None: matrix_jswap[i][j].clean()
                             if matrix_ijswap != None: matrix_ijswap[i][j].clean()
-            if psutil.virtual_memory().percent > 75: gc.collect()
+            if psutil.virtual_memory().percent > 75:
+                print(f"Memory before garbage collection: {psutil.virtual_memory().percent}% of total available RAM")
+                gc.collect()
+                print(f"Memory after garbage collection: {psutil.virtual_memory().percent}% of total available RAM")
 
             # We move on to the next submatrix
             if max_j >= len(model_ops2):
