@@ -206,6 +206,7 @@ class AlignmentMatrixRecursive():
         
         while np.isnan(matrix[-1][-1].value):
             if not self.limiter.check_memory_crossover():
+                print(f"Memory limit exceeded for crossover of these architectures:\n  {str(self.model1)}\n  {str(self.model2)}")
                 raise MemoryError(f"Memory limit exceeded for crossover of these architectures:\n  {str(self.model1)}\n  {str(self.model2)}")
             # We define the submatrix that we will fill up next by looking at the next instances of branching(2) openings and closings in either model
             compute_submatrix = [False, False]
