@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=rcswx-distance
 #SBATCH --time=09:00:00
+#SBATCH --nodes=1
 #SBATCH --cpus-per-task=104
 #SBATCH --mem=500G
 #SBATCH --output=logs/distance-slurm/%j.out
