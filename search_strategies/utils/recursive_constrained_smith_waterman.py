@@ -261,7 +261,7 @@ class AlignmentMatrixRecursive():
                 if compute_submatrix[0]: #bbbbbbbbbbbbbb
                     #aux_matrix_iswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_iswap[prev_i:max_i]]
                     aux_matrix_iswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2)
-                    for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(len(aux_matrix_iswap))]): matrix_iswap[i][0] = pos
+                    for i, pos in enumerate([matrix_iswap[prev_i+i][prev_j] for i in range(len(aux_matrix_iswap))]): aux_matrix_iswap[i][0] = pos
                     if np.isnan(aux_matrix_iswap[0][-1].value): aux_matrix_iswap[0] = matrix[prev_i][prev_j:max_j]
                     aux_matrix_iswap = self.calculate_matrix(matrix = aux_matrix_iswap, model_ops1 = aux_model_ops1_swap, model_ops2 = aux_model_ops2, start_i = prev_i+start_i, start_j = prev_j+start_j)
                     for j in range(prev_j, max_j):
@@ -341,8 +341,8 @@ class AlignmentMatrixRecursive():
                     # In the case of swapping branches in both models simultaneously,
                     #aux_matrix_ijswap = [[row[j] for j in range(prev_j,max_j)] for row in matrix_ijswap[prev_i:max_i]]
                     aux_matrix_ijswap = self.initialize_matrix(aux_model_ops1_swap, aux_model_ops2_swap)
-                    aux_matrix_ijswap[0] = aux_matrix_ijswap[prev_i][prev_j:max_j]
-                    for i, pos in enumerate([aux_matrix_ijswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
+                    aux_matrix_ijswap[0] = matrix_ijswap[prev_i][prev_j:max_j]
+                    for i, pos in enumerate([matrix_ijswap[prev_i+i][prev_j] for i in range(len(aux_matrix_ijswap))]): aux_matrix_ijswap[i][0] = pos
                     # if we have no values from previous ijswap calculations, we take them from the separated i and j swapped matrices;
                     # the first row will come from the matrix_jswap matrix
                     if np.isnan(aux_matrix_ijswap[0][-1].value): aux_matrix_ijswap[0] = matrix_jswap[prev_i][prev_j:max_j]
