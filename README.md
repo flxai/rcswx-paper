@@ -1,8 +1,8 @@
 # Recursive Constrained Smith–Waterman crossover for neural architecture search
 
 > [!IMPORTANT]
-> To use RCSWX in your own projects, see [rcswx](https://github.com/flxai/rcswx),
-> the standalone Rust-backed implementation with reduced runtime and memory use.
+> **To use RCSWX in your own projects, see [rcswx](https://github.com/flxai/rcswx),
+> the standalone Rust-backed implementation with reduced runtime and memory use.**
 >
 > This repository is dedicated to reproducing the paper’s results. It contains
 > the original implementation, experiment configurations, benchmarks, and
