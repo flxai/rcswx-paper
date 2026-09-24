@@ -2,9 +2,7 @@
 
 ## Experiments & visualizations
 
-To reproduce all experiments, please make sure you have the following files available, that came with this repository:
-* `benchmark.pkl`
-* `models.pkl`
+`benchmark.pkl` and `models.pkl` are not distributed in this repository. If you are interested in reproducing the results, please contact the authors using the email addresses listed in the publication.
 
 ### Environment
 
@@ -83,7 +81,7 @@ Unfortunately the situation with SLURM and paths requires us to use absolute pat
 
 ```
 $ split -l 4 configs/einspace/evolution_config_list.lst configs/einspace/evolution_config_list_split4_
-for fn in /path/to/einsearch/configs/einspace/evolution_config_list_split4_*; do sbatch -D /path/to/einsearch -A hai_1006 --export ALL --time 06:00:00 --ntasks 1 --gpus-per-task 4 /path/to/einsearch/scripts/slurm-run.sh "$fn" 4; done
+for fn in /path/to/rcswx-paper/configs/einspace/evolution_config_list_split4_*; do sbatch -D /path/to/rcswx-paper -A hai_1006 --export ALL --time 06:00:00 --ntasks 1 --gpus-per-task 4 /path/to/rcswx-paper/scripts/slurm-run.sh "$fn" 4; done
 ```
 
 #### Visualization
