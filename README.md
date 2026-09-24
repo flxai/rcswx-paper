@@ -1,102 +1,100 @@
-# Evolutionary Architecture Search Through Grammar-Based Sequence Alignment
+# Recursive Constrained Smith–Waterman crossover for neural architecture search
 
-## Experiments & visualizations
+> [!IMPORTANT]
+> To use RCSWX in your own projects, see [rcswx](https://github.com/flxai/rcswx),
+> the standalone Rust-backed implementation with reduced runtime and memory use.
+>
+> This repository is dedicated to reproducing the paper’s results. It contains
+> the original implementation, experiment configurations, benchmarks, and
+> visualization code.
 
-`benchmark.pkl` and `models.pkl` are not distributed in this repository. If you are interested in reproducing the results, please contact the authors using the email addresses listed in the publication.
+Research code accompanying
+[**Evolutionary Architecture Search through Grammar-Based Sequence Alignment**](https://openreview.net/forum?id=YK8HlgLJd7).
 
-### Environment
+## How RCSWX works
 
-To set up the environment, please create a virtual environment in Python using `venv`, using the given `requirements.txt`.
+RCSWX compares and recombines neural network architectures represented as
+**grammar derivation trees**. These trees record the rules used to construct
+a network.
 
-```
-$ pip install -r requirements.txt
-```
+Recursive alignment identifies differences between two parent architectures
+and computes a structural edit distance. Crossover applies a selection of
+these edits to produce offspring architectures.
 
-For CUDA and other specific hardware requirements, please make sure to collect and activate software packages accordingly.
-Alternatively, there is also a [nix-shell](https://nixos.wiki/wiki/Development_environment_with_nix-shell) for cross platform support found in `shell.nix`.
-Furthermore, a module configuration for [JUWELS](https://www.fz-juelich.de/en/ias/jsc/systems/supercomputers/juwels) is `scripts/juwels_modules.txt`.
+The experiments use
+[**einspace**](https://arxiv.org/abs/2405.20838), a grammar-based neural
+architecture search space. RCSWX provides the alignment and crossover
+method; einspace defines the architectures explored during search.
 
-### Runtime benchmarks on selected derivation trees
+## Reproducing the results
 
-*This will generate Figure 3 of the publication.*
+The experiment artifacts (`benchmark.pkl` and `models.pkl`) are available on
+request. Please contact the authors using the email addresses listed in the
+[publication](https://openreview.net/forum?id=YK8HlgLJd7).
 
-For benchmarking SEPX and CSWX on collected randomly generated trees and derivation trees respectively (cf. `benchmark.pkl` for collected derivation trees during evolutionary search), please collect relevant runtime data first:
+Start with the [reproduction guide](REPRODUCIBILITY.md) for environment setup,
+dataset and artifact preparation, experiment commands, and figure generation.
 
-```
-$ ./benchmark.py --help
-$ ./benchmark.py benchmark --runs 10 sepx 1 20
-$ ./benchmark.py benchmark --runs 10 cswx1 1 200
-```
+| Experiment or analysis | Entry point |
+| --- | --- |
+| Inspect alignment costs and edit paths | [Cost-matrix notebook](notebooks/cswx-cost-matrix.ipynb) |
+| Benchmark crossover runtime | [`benchmark.py`](benchmark.py) |
+| Run evolutionary searches and ablations | [Experiment configurations](configs/einspace/) and [`scripts/run.sh`](scripts/run.sh) |
+| Visualize search results | [`exploration.py`](exploration.py) |
 
-After having collected data, please run visualizations, to generate plots:
+The guide separates individual runs from full experiment sweeps and includes
+the cluster-specific submission instructions. It also maps experiments and
+outputs to the corresponding paper figures.
 
-```
-$ ./benchmark.py plot
-```
+Use the original implementation and the paper’s configurations when
+reproducing its results. Evaluating the optimized implementation is a separate
+comparison, not a replacement for the original experiments.
 
-For further help, please use the following commands
+## Getting started
 
-```
-$ ./benchmark.py --help
-$ ./benchmark.py benchmark --help
-$ ./benchmark.py plot --help
-```
+Clone this repository:
 
-### Dataset exploration benchmarks
-
-*This will generate Figure 4 of the publication.*
-
-There are eight datasets given:
-
-* addnist
-* language
-* multnist
-* cifartile
-* gutenberg
-* isabella
-* geoclassing
-* chesseract
-
-Please obtain each dataset from their respective source.
-After having collected necessary data, experiments can be started within different environments.
-
-#### Requirements
-
-The given benchmarks run ablation studies that require a non-negligible amount of today's compute.
-We give a naïve implementation for theoretical reproduction purposes and a configuration specific to JUWELS.
-
-A search space is spanned across multiple configurations, as defined in the file `configs/einspace/evolution_config_list.lst`.
-This search space can be iterated upon in a different variety of commands.
-
-#### Naïve implementation
-
-A straight-forward way of running this list is by taking each entry from the given file and feeding it to `scripts/run.sh`.
-However, without parallelization this is infeasible.
-
-#### On JUWELS
-
-To queue and evenly distribute the workload, we split the configurations to jobs with 4 configurations each.
-Using the main list as a starting point, to then distribute them evenly as individual jobs using SLURM on JUWELS.
-Unfortunately the situation with SLURM and paths requires us to use absolute paths:
-
-```
-$ split -l 4 configs/einspace/evolution_config_list.lst configs/einspace/evolution_config_list_split4_
-for fn in /path/to/rcswx-paper/configs/einspace/evolution_config_list_split4_*; do sbatch -D /path/to/rcswx-paper -A hai_1006 --export ALL --time 06:00:00 --ntasks 1 --gpus-per-task 4 /path/to/rcswx-paper/scripts/slurm-run.sh "$fn" 4; done
+```sh
+git clone https://github.com/flxai/rcswx-paper.git
+cd rcswx-paper
 ```
 
-#### Visualization
+Follow the [reproduction guide](REPRODUCIBILITY.md) before launching experiments.
+The environment files are:
 
-After having run the computations above, the `results` directory will contain the runs' relevant collected information.
-For visualization the following script can be run:
+| File | Purpose |
+| --- | --- |
+| [`requirements.txt`](requirements.txt) | Original Python dependency pins |
+| [`shell.nix`](shell.nix) | Nix development environment |
+| [`scripts/juwels_modules.txt`](scripts/juwels_modules.txt) | JUWELS environment modules |
 
+The [experiment launcher](scripts/run.sh) expects a Python virtual environment
+named `venv` in the repository root.
+
+Prepare the datasets and experiment artifacts required by the selected
+workflow before running it. Full search sweeps involve training many
+architectures; begin with an individual configuration to check the setup.
+
+## Citation
+
+Please cite the paper when using RCSWX or its experimental results:
+
+```bibtex
+@inproceedings{gomez2026evolutionary,
+  author    = {Gómez Martín, Adri and Möller, Felix and McDonagh, Steven and
+               Abella, Monica and Desco, Manuel and Crowley, Elliot J. and
+               Klein, Aaron and Ericsson, Linus},
+  title     = {Evolutionary Architecture Search through Grammar-Based Sequence Alignment},
+  booktitle = {International Conference on Automated Machine Learning (AutoML)},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=YK8HlgLJd7}
+}
 ```
-$ ./exploration.py
-```
 
-### Cost matrix
+The experiments build on **einspace**, introduced by Ericsson et al. in
+[**einspace: Searching for Neural Architectures from Fundamental Operations**](https://arxiv.org/abs/2405.20838).
+Please also cite that work when using its search space.
 
-*This will generate Figure 2 of the publication.*
+## License
 
-The cost matrix and path operations resulting from the application of CSWX can be found in `notebooks/cswx-cost-matrix.ipynb`.
-
-
+[MIT](LICENSE).
