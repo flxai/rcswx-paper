@@ -9,7 +9,7 @@
 > visualization code.
 
 Research code accompanying
-[**Evolutionary Architecture Search through Grammar-Based Sequence Alignment**](https://openreview.net/forum?id=YK8HlgLJd7).
+[**Evolutionary Architecture Search through Grammar-Based Sequence Alignment**](https://arxiv.org/abs/2512.04992).
 
 ## How RCSWX works
 
@@ -30,7 +30,7 @@ method; einspace defines the architectures explored during search.
 
 The experiment artifacts (`benchmark.pkl` and `models.pkl`) are available on
 request. Please contact the authors using the email addresses listed in the
-[publication](https://openreview.net/forum?id=YK8HlgLJd7).
+[publication](https://arxiv.org/abs/2512.04992).
 
 Start with the [reproduction guide](REPRODUCIBILITY.md) for environment setup,
 dataset and artifact preparation, experiment commands, and figure generation.
@@ -87,7 +87,7 @@ Please cite the paper when using RCSWX or its experimental results:
   title     = {Evolutionary Architecture Search through Grammar-Based Sequence Alignment},
   booktitle = {International Conference on Automated Machine Learning (AutoML)},
   year      = {2026},
-  url       = {https://openreview.net/forum?id=YK8HlgLJd7}
+  url       = {https://arxiv.org/abs/2512.04992}
 }
 ```
 
