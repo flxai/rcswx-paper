@@ -87,9 +87,12 @@ Please cite the paper when using RCSWX or its experimental results:
   title     = {Evolutionary Architecture Search through Grammar-Based Sequence Alignment},
   booktitle = {International Conference on Automated Machine Learning (AutoML)},
   year      = {2026},
-  url       = {https://arxiv.org/abs/2512.04992}
+  url       = {https://github.com/flxai/rcswx-paper}
 }
 ```
+
+The previous [OpenReview URL](https://openreview.net/forum?id=YK8HlgLJd7)
+is deprecated; use the repository URL above.
 
 The experiments build on **einspace**, introduced by Ericsson et al. in
 [**einspace: Searching for Neural Architectures from Fundamental Operations**](https://arxiv.org/abs/2405.20838).
